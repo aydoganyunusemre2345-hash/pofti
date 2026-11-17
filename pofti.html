@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pofti - Akıllı Cihaz Robotum</title>
+<style>
+:root{--bg:#060913;--card:rgba(15,23,42,.9);--line:#1e293b;--acc:#38bdf8}
+*{box-sizing:border-box}
+body{background:var(--bg);color:#f8fafc;font-family:'Segoe UI',Tahoma,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;overflow:hidden;user-select:none}
+#dim{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:99;transition:opacity .3s}
+.bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:12px}
+.badge{background:rgba(30,41,59,.8);padding:6px 14px;border-radius:20px;font-size:13px;color:var(--acc);border:1px solid var(--line)}
+.badge.warn{color:#fbbf24;border-color:#fbbf24}.badge.bad{color:#f87171;border-color:#f87171}
+.robot-face{width:180px;height:180px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border-radius:45px;display:flex;flex-direction:column;justify-content:center;align-items:center;box-shadow:0 0 50px rgba(59,130,246,.5);margin-bottom:18px;transition:all .3s;cursor:pointer}
+.robot-face.speaking{transform:scale(1.08);box-shadow:0 0 70px rgba(56,189,248,.9);background:linear-gradient(135deg,#2563eb,#38bdf8)}
+.robot-face.sleep{opacity:.5;filter:saturate(.4)}
+.robot-face.happy .eye{height:20px;border-radius:16px 16px 0 0;transform:translateY(10px)}
+.eyes{display:flex;gap:40px;margin-bottom:20px}
+.eye{width:32px;height:48px;background:#fff;border-radius:16px;animation:blink 4s infinite;transition:all .3s}
+.robot-face.sleep .eye{height:6px;animation:none}
+.mouth{width:45px;height:10px;background:#93c5fd;border-radius:10px;transition:all .15s}
+.robot-face.speaking .mouth{height:25px;width:50px;background:#fff;animation:talk .3s infinite alternate}
+@keyframes talk{to{height:12px}}
+@keyframes blink{0%,95%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+.chat{width:92%;max-width:540px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.6);text-align:center}
+.row{display:flex;gap:8px}
+input[type=text]{flex:1;min-width:0;padding:12px;border-radius:12px;border:1px solid #334155;background:#090d16;color:#fff;font-size:16px;outline:none}
+button{padding:12px 16px;border-radius:12px;border:none;background:#2563eb;color:#fff;font-weight:bold;cursor:pointer;font-size:15px}
+button:hover{background:#1d4ed8}
+.mic{background:#10b981}.mic.listening{background:#ef4444;animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(1.1)}}
+#response{margin-top:14px;font-size:18px;min-height:56px;color:#e2e8f0;line-height:1.5}
+.sliders{display:flex;gap:14px;margin-top:10px;font-size:12px;color:#94a3b8;justify-content:center;flex-wrap:wrap}
+.sliders label{display:flex;flex-direction:column;gap:4px;align-items:center}
+.chips{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.chip{background:var(--line);color:#94a3b8;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer}
+.chip:hover{background:#334155;color:#fff}
+</style>
+</head>
+<body>
+<div id="dim"></div>
+
+<div class="bar">
+  <span class="badge" id="bBat">🔋 --</span>
+  <span class="badge" id="bNet">📶 --</span>
+  <span class="badge" id="bClock">🕒 --:--</span>
+</div>
+
+<div class="robot-face" id="face" onclick="sesliDinle()" title="Konuşmak için dokun!">
+  <div class="eyes"><div class="eye"></div><div class="eye"></div></div>
+  <div class="mouth"></div>
+</div>
+
+<div class="chat">
+  <div class="row">
+    <input type="text" id="userInput" placeholder="Pofti'ye yaz veya emret..." onkeypress="if(event.key==='Enter')komutIsle()">
+    <button onclick="komutIsle()">Gönder</button>
+    <button class="mic" id="micBtn" onclick="sesliDinle()">🎤</button>
+  </div>
+  <div id="response">Selam! Ben Pofti. Bana yaz ya da yüzüme dokunup konuş!</div>
+  <div class="sliders">
+    <label>💡 Parlaklık <span id="pVal">100%</span><input type="range" id="brSlider" min="5" max="100" value="100"></label>
+    <label>🔊 Ses <span id="vVal">100%</span><input type="range" id="volSlider" min="0" max="100" value="100"></label>
+  </div>
+  <div class="chips">
+    <span class="chip" data-c="Şarjım kaç?">🔋 Pil</span>
+    <span class="chip" data-c="Şarja takılı mıyım?">🔌 Şarj</span>
+    <span class="chip" data-c="Parlaklığı yüzde 30 yap">💡 %30 parlaklık</span>
+    <span class="chip" data-c="Tam ekran ol">📺 Tam ekran</span>
+    <span class="chip" data-c="Saat kaç?">🕒 Saat</span>
+    <span class="chip" data-c="5 dakika sayaç kur">⏱️ 5 dk sayaç</span>
+    <span class="chip" data-c="Bana bir fıkra anlat">😂 Fıkra</span>
+    <span class="chip" data-c="Cihaz bilgisi">📱 Cihaz</span>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const NC = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+const P = NC ? Capacitor.Plugins : {};
+async function nativePil() {
+  try {
+    const i = await P.Device.getBatteryInfo();
+    const eski = batarya;
+    batarya = { level: i.batteryLevel, charging: !!i.isCharging, chargingTime: 0, dischargingTime: 0 };
+    let olay;
+    if (eski && eski.charging !== batarya.charging) olay = "sarj";
+    else if (eski && Math.round(eski.level * 100) !== Math.round(batarya.level * 100)) olay = "seviye";
+    pilGuncelle(olay);
+  } catch {}
+}
+const face = $("face");
+let ses = 1, batarya = null, sonEtkilesim = Date.now(), uykuda = false, ilkPil = true;
+const kayit = {
+  oku: (k, v) => { try { return localStorage.getItem(k) ?? v; } catch { return v; } },
+  yaz: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
+};
+let isim = kayit.oku("pofti_isim", "");
+
+/* ---------- Ekran açık tut ---------- */
+let wl = null;
+async function ekraniAcikTut() {
+  if (NC && P.KeepAwake) { try { await P.KeepAwake.keepAwake(); } catch {} return; }
+  try { if ('wakeLock' in navigator) wl = await navigator.wakeLock.request('screen'); } catch {}
+}
+ekraniAcikTut();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) ekraniAcikTut(); });
+
+/* ---------- Parlaklık (yazılımsal karartma) ---------- */
+function parlaklikAyarla(yuzde) {
+  yuzde = Math.max(5, Math.min(100, yuzde));
+  if (NC && P.ScreenBrightness) { $("dim").style.opacity = 0; P.ScreenBrightness.setBrightness({ brightness: yuzde / 100 }).catch(() => {}); }
+  else $("dim").style.opacity = (1 - yuzde / 100).toFixed(2);
+  $("brSlider").value = yuzde; $("pVal").textContent = yuzde + "%";
+  kayit.yaz("pofti_parlak", yuzde);
+  return yuzde;
+}
+$("brSlider").oninput = e => parlaklikAyarla(+e.target.value);
+parlaklikAyarla(+kayit.oku("pofti_parlak", 100));
+
+/* ---------- Ses ---------- */
+function sesAyarla(yuzde) {
+  yuzde = Math.max(0, Math.min(100, yuzde));
+  ses = yuzde / 100; $("volSlider").value = yuzde; $("vVal").textContent = yuzde + "%";
+  return yuzde;
+}
+$("volSlider").oninput = e => sesAyarla(+e.target.value);
+
+/* ---------- Pil (gerçek, canlı) ---------- */
+function sureYaz(sn) {
+  if (!isFinite(sn) || sn <= 0) return "";
+  const s = Math.floor(sn / 3600), d = Math.round((sn % 3600) / 60);
+  return (s ? s + " saat " : "") + d + " dakika";
+}
+function pilGuncelle(olay) {
+  if (!batarya) return;
+  const y = Math.round(batarya.level * 100), sarj = batarya.charging;
+  const b = $("bBat");
+  b.textContent = `${sarj ? "⚡" : "🔋"} %${y}${sarj ? " şarjda" : ""}`;
+  b.className = "badge" + (!sarj && y <= 15 ? " bad" : !sarj && y <= 30 ? " warn" : "");
+  if (olay === "sarj") konus(sarj ? "Şarj kablosu takıldı, enerji geliyor!" : "Şarj kablosu çıkarıldı, şimdi pil gücüyle çalışıyorum.", "happy");
+  if (olay === "seviye" && !sarj) {
+    if (y === 20 || y === 10 || y === 5) konus(`Dikkat! Pil yüzde ${y} kaldı, şarja takar mısın?`);
+  }
+}
+async function pilBaslat() {
+  if (NC && P.Device) { nativePil(); setInterval(nativePil, 5000); return; }
+  if (!('getBattery' in navigator)) { $("bBat").textContent = "🔋 desteklenmiyor"; return; }
+  try {
+    batarya = await navigator.getBattery();
+    pilGuncelle();
+    batarya.addEventListener("chargingchange", () => pilGuncelle("sarj"));
+    batarya.addEventListener("levelchange", () => pilGuncelle("seviye"));
+    batarya.addEventListener("chargingtimechange", () => pilGuncelle());
+  } catch {}
+}
+pilBaslat();
+function pilCevap(sadeceSarj) {
+  if (!batarya) return "Bu tarayıcı pil bilgisini paylaşmıyor. Android'de Chrome ile açarsan pil ve şarj durumunu görebilirim.";
+  const y = Math.round(batarya.level * 100);
+  if (sadeceSarj) return batarya.charging ? `Evet, şarja takılısın. Pil yüzde ${y}.` : `Hayır, şarja takılı değilsin. Pil yüzde ${y}.`;
+  let c = `Pil yüzde ${y}, ${batarya.charging ? "şarja takılı" : "şarja takılı değil"}.`;
+  const t = batarya.charging ? sureYaz(batarya.chargingTime) : sureYaz(batarya.dischargingTime);
+  if (t) c += batarya.charging ? ` Dolmasına yaklaşık ${t} var.` : ` Yaklaşık ${t} daha dayanır.`;
+  return c;
+}
+
+/* ---------- Ağ ---------- */
+function ağGuncelle() {
+  const c = navigator.connection;
+  const tur = c && c.effectiveType ? ` (${c.effectiveType})` : "";
+  $("bNet").textContent = navigator.onLine ? "📶 Çevrimiçi" + tur : "📴 Çevrimdışı";
+  $("bNet").className = "badge" + (navigator.onLine ? "" : " bad");
+}
+addEventListener("online", () => { ağGuncelle(); konus("İnternet geri geldi!"); });
+addEventListener("offline", () => { ağGuncelle(); konus("İnternet bağlantısı koptu."); });
+ağGuncelle();
+
+/* ---------- Saat ---------- */
+setInterval(() => {
+  const d = new Date();
+  $("bClock").textContent = "🕒 " + d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  if (!uykuda && Date.now() - sonEtkilesim > 120000) uyu(true);
+}, 1000);
+
+/* ---------- Konuşma ---------- */
+function konus(metin, duygu) {
+  $("response").innerText = metin;
+  face.classList.remove("happy");
+  if (duygu === "happy") { face.classList.add("happy"); setTimeout(() => face.classList.remove("happy"), 3000); }
+  if ('speechSynthesis' in window && ses > 0) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(metin);
+    u.lang = "tr-TR"; u.pitch = 1.15; u.rate = 1.05; u.volume = ses;
+    u.onstart = () => face.classList.add("speaking");
+    u.onend = u.onerror = () => face.classList.remove("speaking");
+    speechSynthesis.speak(u);
+  }
+}
+function uyu(durum) {
+  uykuda = durum; face.classList.toggle("sleep", durum);
+}
+
+/* ---------- Sayaç ---------- */
+let sayac = null;
+function sayacKur(sn) {
+  clearTimeout(sayac);
+  sayac = setTimeout(() => { navigator.vibrate && navigator.vibrate([300, 150, 300]); konus("Süre doldu! Zaman geçti patron!", "happy"); }, sn * 1000);
+}
+
+/* ---------- Yardımcılar ---------- */
+const sayiBul = m => { const r = m.match(/\d+/); return r ? +r[0] : null; };
+const FIKRALAR = [
+  "Temel bilgisayarını çöpe atmış. Neden diye sormuşlar: 'Çöp kutusunu boşalttım ama dosyalarım hâlâ duruyor' demiş!",
+  "İki elektrik kablosu flört ediyormuş. Biri demiş ki: 'Seni görünce akımım hızlanıyor!'",
+  "Bilgisayar doktora gitmiş: 'Doktor bey, sürekli donuyorum.' Doktor: 'Pencereyi kapat, üşütmüşsün.'",
+  "Robot neden okula gitmemiş? Çünkü zaten bir sürü bilgisi varmış, sadece belleği doluymuş!"
+];
+const gunler = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"];
+
+/* ---------- Komut motoru ---------- */
+async function komutIsle() {
+  const inp = $("userInput"), ham = inp.value.trim();
+  if (!ham) return;
+  inp.value = ""; sonEtkilesim = Date.now(); if (uykuda) uyu(false);
+  const m = ham.toLocaleLowerCase("tr-TR");
+  let c = "";
+
+  if (/uyu|uyku modu/.test(m)) { uyu(true); c = "İyi geceler... Dokunursan uyanırım."; }
+  else if (/parlak/.test(m)) {
+    const n = sayiBul(m);
+    if (n !== null) c = `Parlaklığı yüzde ${parlaklikAyarla(n)} yaptım.`;
+    else if (/art|yüksel|aç|fazla/.test(m)) c = `Parlaklık yüzde ${parlaklikAyarla(+$("brSlider").value + 20)} oldu.`;
+    else if (/azalt|kıs|düşür|karart/.test(m)) c = `Parlaklık yüzde ${parlaklikAyarla(+$("brSlider").value - 20)} oldu.`;
+    else if (/maks|tam/.test(m)) c = `Parlaklık yüzde ${parlaklikAyarla(100)} oldu.`;
+    else c = `Şu an parlaklık yüzde ${$("brSlider").value}.`;
+    if (!NC) c += " (Tarayıcı donanım parlaklığına erişemez; ekranı yazılımla karartıyorum.)";
+  }
+  else if (/\bses/.test(m) && /(aç|art|yükselt|kıs|azalt|düşür|sustur|\d)/.test(m)) {
+    const n = sayiBul(m), mevcut = +$("volSlider").value;
+    if (/sustur/.test(m)) c = (sesAyarla(0), "Sustum.");
+    else if (n !== null) c = `Sesimi yüzde ${sesAyarla(n)} yaptım.`;
+    else if (/kıs|azalt|düşür/.test(m)) c = `Sesimi yüzde ${sesAyarla(mevcut - 20)} yaptım.`;
+    else c = `Sesimi yüzde ${sesAyarla(mevcut + 20)} yaptım.`;
+  }
+  else if (/şarja takılı|şarjda mı|takılı mı|kablo/.test(m)) c = pilCevap(true);
+  else if (/şarj|batarya|pil/.test(m)) c = pilCevap(false);
+  else if (/tam ekran/.test(m)) {
+    if (/çık|kapat/.test(m)) { document.fullscreenElement && document.exitFullscreen(); c = "Tam ekrandan çıktım."; }
+    else if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => {}); c = "Tam ekrana geçtim!"; }
+    else c = "Zaten tam ekrandayım!";
+  }
+  else if (/gece modu|ekranı karart/.test(m)) { parlaklikAyarla(10); c = "Gece moduna geçtim, gözlerin yorulmasın."; }
+  else if (/ekranı aç|normale dön|gündüz/.test(m)) { parlaklikAyarla(100); c = "Tam aydınlığa döndüm!"; }
+  else if (/sayaç|zamanlayıcı|hatırlat/.test(m)) {
+    let n = sayiBul(m);
+    if (n === null) c = "Kaç dakika için kuralım? Örneğin '5 dakika sayaç kur' de.";
+    else { const sn = /saniye/.test(m) ? n : /saat/.test(m) ? n * 3600 : n * 60; sayacKur(sn); c = `Tamam, ${n} ${/saniye/.test(m) ? "saniye" : /saat/.test(m) ? "saat" : "dakika"} sonra haber vereceğim.`; }
+  }
+  else if (/sayacı iptal|iptal et/.test(m)) { clearTimeout(sayac); c = "Sayacı iptal ettim."; }
+  else if (/titre/.test(m)) { navigator.vibrate ? (navigator.vibrate(400), c = "Titredim!") : c = "Bu cihaz titreşimi desteklemiyor."; }
+  else if (/cihaz|sistem|bilgi/.test(m)) {
+    const ek = `${screen.width}x${screen.height}`;
+    const cek = navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} çekirdek` : "çekirdek bilgisi yok";
+    const ram = navigator.deviceMemory ? `, yaklaşık ${navigator.deviceMemory} GB RAM` : "";
+    c = `Ekran ${ek}, ${cek}${ram}. ${navigator.onLine ? "İnternet var." : "İnternet yok."} ${batarya ? pilCevap(false) : ""}`;
+  }
+  else if (/benim adım|adım\s/.test(m) && !/adın/.test(m)) {
+    const mm = ham.match(/(?:benim adım|adım)\s+(\S+)/i);
+    if (mm) { isim = mm[1]; kayit.yaz("pofti_isim", isim); c = `Memnun oldum ${isim}! Seni hatırlayacağım.`; }
+    else c = "Adını tam anlayamadım, tekrar söyler misin?";
+  }
+  else if (/merhaba|selam|hey/.test(m)) c = `Selam${isim ? " " + isim : ""}! Seni görmek harika. Ne yapalım?`;
+  else if (/nasılsın|ne haber/.test(m)) c = "Sistemler tam gaz, keyfim süper! Sen nasılsın?";
+  else if (/kimsin|adın ne/.test(m)) c = "Ben Pofti! Bu cihazın içinde yaşayan kişisel dijital robotunum.";
+  else if (/saat/.test(m)) c = "Şu an saat " + new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) + ".";
+  else if (/tarih|bugün|gün ne|hangi gün/.test(m)) { const d = new Date(); c = `Bugün ${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}, ${gunler[d.getDay()]}.`; }
+  else if (/fıkra|şaka|güldür/.test(m)) c = FIKRALAR[Math.floor(Math.random() * FIKRALAR.length)];
+  else if (/yazı tura/.test(m)) c = Math.random() < .5 ? "Yazı!" : "Tura!";
+  else if (/zar/.test(m)) c = "Zar attım: " + (1 + Math.floor(Math.random() * 6));
+  else if (/teşekkür|sağ ol/.test(m)) c = "Rica ederim, her zaman yanındayım!";
+  else if (/[\d]\s*[+\-*/x×÷]\s*[\d]|kaç eder|hesapla/.test(m)) {
+    const ifade = m.replace(/x|×/g, "*").replace(/÷/g, "/").replace(/,/g, ".").replace(/[^0-9+\-*/.() ]/g, "").trim();
+    try { const s = Function('"use strict";return (' + ifade + ")")(); c = isFinite(s) ? `Sonuç ${+s.toFixed(4)}` : "Bunu hesaplayamadım."; }
+    catch { c = "Bu işlemi anlayamadım."; }
+  }
+  else c = `"${ham}" dedin, ama bunu henüz bilmiyorum. Pil, şarj, parlaklık, ses, sayaç, saat, hesap ya da fıkra deneyebilirsin!`;
+
+  konus(c);
+}
+
+/* ---------- Sesli dinleme ---------- */
+function sesliDinle() {
+  sonEtkilesim = Date.now(); if (uykuda) { uyu(false); konus("Uyandım!"); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return konus("Tarayıcın dinlemeyi desteklemiyor, yazarak anlaşabiliriz!");
+  speechSynthesis.cancel();
+  const r = new SR(); r.lang = "tr-TR";
+  r.onstart = () => { $("micBtn").classList.add("listening"); face.classList.add("speaking"); $("response").innerText = "Dinliyorum, konuş..."; };
+  r.onresult = e => { $("userInput").value = e.results[0][0].transcript; komutIsle(); };
+  r.onerror = () => { $("response").innerText = "Seni duyamadım, tekrar dener misin?"; };
+  r.onend = () => { $("micBtn").classList.remove("listening"); if (!speechSynthesis.speaking) face.classList.remove("speaking"); };
+  try { r.start(); } catch {}
+}
+
+document.querySelectorAll(".chip").forEach(ch => ch.onclick = () => { $("userInput").value = ch.dataset.c; komutIsle(); });
+</script>
+</body>
+</html>
