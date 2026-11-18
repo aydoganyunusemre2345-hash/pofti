@@ -22,11 +22,11 @@ public class PoftiAssist extends VoiceInteractionService {
     public Sess(Context c) { super(c); }
     @Override public void onShow(Bundle args, int flags) {
       super.onShow(args, flags);
+      setUiEnabled(false);
       PoftiWake.pending = "hey pofti";
       Intent i = new Intent(getContext(), OverlayActivity.class);
       i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
       startAssistantActivity(i);
-      hide();
     }
   }
 

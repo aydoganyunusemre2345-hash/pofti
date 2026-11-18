@@ -41,10 +41,30 @@ body.ov .bar,body.ov .row,body.ov .sliders,body.ov .chips{display:none}
 body.ov .chat{width:auto;max-width:360px;margin:0 8px 10px 0;padding:12px 16px;border-radius:18px}
 body.ov #response{margin:0;min-height:0;font-size:16px}
 body.ov .robot-face{zoom:.55;margin:0 8px 0 0}
+#setBtn{position:fixed;top:12px;left:12px;z-index:50;background:rgba(30,41,59,.9);padding:10px 14px;border-radius:12px;font-size:18px}
+body.ov #setBtn{display:none}
+#setPanel{position:fixed;inset:0;background:rgba(6,9,19,.97);z-index:100;overflow:auto;padding:20px}
+#setPanel[hidden]{display:none}
+.izin{display:flex;align-items:center;gap:12px;background:#0f172a;border:1px solid #1e293b;border-radius:14px;padding:14px;margin:10px 0}
+.izin .ik{font-size:22px}.izin .tx{flex:1;text-align:left;font-size:15px}
+.izin small{color:#94a3b8;display:block;font-size:12px;margin-top:2px}
+.izin button{padding:8px 16px;font-size:13px}
 </style>
 </head>
 <body>
 <div id="dim"></div>
+<button id="setBtn" onclick="ayarAc()" title="Ayarlar">⚙️</button>
+<div id="setPanel" hidden>
+  <div style="max-width:560px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">⚙️ Ayarlar</h2><button onclick="ayarKapat()">Kapat ✕</button></div>
+    <h3 style="margin:18px 0 4px">İzinler</h3>
+    <div id="izinOzet" style="color:#38bdf8;font-size:14px"></div>
+    <div id="izinListe"></div>
+    <button onclick="siradaki()" style="width:100%;margin-top:6px">Sıradaki eksik izne git</button>
+    <p style="color:#94a3b8;font-size:12px">✅ verildi · ❌ verilmedi. "Ver" düğmesi seni ilgili ayara götürür. İzni verip geri dönünce işaret kendiliğinden güncellenir.</p>
+  </div>
+</div>
+
 
 <div class="bar">
   <span class="badge" id="bBat">🔋 --</span>
@@ -90,6 +110,35 @@ const $ = id => document.getElementById(id);
 const NC = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 const P = NC ? Capacitor.Plugins : {};
 const PN = NC && P.PoftiNative ? P.PoftiNative : null;
+const IZINLER = [
+  ["mic", "Mikrofon", "Seni duyabilmem için", () => PN.micAsk()],
+  ["access", "Erişilebilirlik servisi", "Ekrana dokunmam ve tableti kontrol etmem için", () => erisimAc()],
+  ["overlay", "Diğer uygulamaların üzerinde göster", "Hey Pofti deyince öne gelmem için", () => PN.openSettings({ action: "android.settings.action.MANAGE_OVERLAY_PERMISSION", data: "package:com.pofti.app" })],
+  ["battery", "Pil kısıtlaması yok", "Arka planda kapanmamam için", () => PN.openSettings({ action: "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", data: "package:com.pofti.app" })],
+  ["notif", "Bildirimler", "Arka planda dinlerken bildirim gösterebilmem için", () => PN.openSettings({ action: "android.settings.APPLICATION_DETAILS_SETTINGS", data: "package:com.pofti.app" })],
+  ["assist", "Varsayılan asistan", "Asistan hareketiyle gelmem için", () => PN.openSettings({ action: "android.settings.VOICE_INPUT_SETTINGS" })]
+];
+let izinDurum = {}, izinTimer = null;
+async function izinYenile() {
+  const k = $("izinListe");
+  if (!PN) { k.innerHTML = '<p style="color:#94a3b8">İzin ayarları sadece telefon uygulamasında görünür.</p>'; $("izinOzet").textContent = ""; return; }
+  try { izinDurum = await PN.permStatus(); } catch { izinDurum = {}; }
+  $("izinOzet").textContent = IZINLER.filter(i => izinDurum[i[0]]).length + "/" + IZINLER.length + " izin verildi";
+  k.innerHTML = "";
+  for (const [id, ad, ac, fn] of IZINLER) {
+    const v = !!izinDurum[id], r = document.createElement("div"); r.className = "izin";
+    r.innerHTML = `<span class="ik">${v ? "✅" : "❌"}</span><div class="tx">${ad}<small>${ac}</small></div>`;
+    if (!v) { const b = document.createElement("button"); b.textContent = "Ver"; b.onclick = async () => { try { await fn(); } catch {} setTimeout(izinYenile, 800); }; r.appendChild(b); }
+    k.appendChild(r);
+  }
+}
+function ayarAc() { $("setPanel").hidden = false; izinYenile(); clearInterval(izinTimer); izinTimer = setInterval(izinYenile, 2000); }
+function ayarKapat() { $("setPanel").hidden = true; clearInterval(izinTimer); }
+function siradaki() {
+  if (!PN) return;
+  const e = IZINLER.find(i => !izinDurum[i[0]]);
+  if (e) { Promise.resolve(e[3]()).catch(() => {}).then(() => setTimeout(izinYenile, 800)); } else konus("Tüm izinler tamam!");
+}
 const OV = /overlay/.test(location.search);
 let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
 const WAKE = /(?:hey|hay|ey)?\s*(?:pofti|bofti|pofi|pofty|bofi|poftu)/;
@@ -123,6 +172,7 @@ async function dongu() {
   if (mod === "komut") {
     beklenenKomut = false;
     if (t) { bos = 0; $("userInput").value = t; return komutIsle(); }
+    if (r && r.error && r.error !== 6 && r.error !== 7) { surekli = false; return konus("Dinleme hatası oldu, hata kodu " + r.error + ". Bu kodu Claude'a söyle."); }
     if (surekli && ++bos < 3) return dongu();
     if (OV) return PN.closeOverlay();
     surekli = false; $("convBtn").style.background = ""; mod = "wake";
@@ -159,6 +209,7 @@ async function cihazKomut(m) {
   let x;
   if (/sohbeti kapat|sohbet modunu kapat|dinlemeyi bırak/.test(m)) { surekli = false; return "Tamam, sohbet modunu kapattım."; }
   if (/sohbet mod/.test(m)) { sohbetModu(); return ""; }
+  if (/izinler|izin ekranı|pofti ayarları/.test(m)) { ayarAc(); return "İzinler ekranını açtım."; }
   if (/hey pofti modu|uyanma modu/.test(m)) { wakeModu(); return ""; }
   if (/arka plan izni|arka planda dinle|üstte göster/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.action.MANAGE_OVERLAY_PERMISSION", data: "package:com.pofti.app" }); return "Açılan listede Pofti'yi bulup üstte gösterme iznini aç, geri dön ve pil iznini ayarla de."; }
   if (/pil izni|pil kısıtlama|pil optimizasyon/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", data: "package:com.pofti.app" }); return "Çıkan pencerede izin ver de. Honor'da ayrıca Ayarlar, Pil, Uygulama başlatma bölümünden Pofti'yi elle yönetmeye al ve üç seçeneği de aç."; }

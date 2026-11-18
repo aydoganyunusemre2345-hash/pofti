@@ -170,6 +170,26 @@ public class PoftiPlugin extends Plugin {
     JSObject o = new JSObject(); o.put("text", PoftiWake.pending == null ? "" : PoftiWake.pending); PoftiWake.pending = null; c.resolve(o);
   }
 
+  @PluginMethod public void permStatus(PluginCall c) {
+    Context x = getContext(); String p = x.getPackageName(); JSObject o = new JSObject();
+    o.put("mic", ContextCompat.checkSelfPermission(x, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED);
+    o.put("access", PoftiService.inst != null);
+    o.put("overlay", android.provider.Settings.canDrawOverlays(x));
+    o.put("battery", ((android.os.PowerManager) x.getSystemService(Context.POWER_SERVICE)).isIgnoringBatteryOptimizations(p));
+    o.put("notif", androidx.core.app.NotificationManagerCompat.from(x).areNotificationsEnabled());
+    String a = null;
+    try { a = android.provider.Settings.Secure.getString(x.getContentResolver(), "assistant"); } catch (Exception e) {}
+    o.put("assist", a != null && a.contains(p));
+    c.resolve(o);
+  }
+
+  @PluginMethod public void micAsk(PluginCall c) {
+    if (getPermissionState("mic") == PermissionState.GRANTED) { c.resolve(); return; }
+    requestPermissionForAlias("mic", c, "micAskCb");
+  }
+
+  @PermissionCallback private void micAskCb(PluginCall c) { c.resolve(); }
+
   @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
 
   @PluginMethod public void accessOn(PluginCall c) {
