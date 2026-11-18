@@ -82,7 +82,7 @@ public class PoftiPlugin extends Plugin {
       listenCall = call;
       if (!SpeechRecognizer.isRecognitionAvailable(getContext())) { call.reject("servis yok"); return; }
       if (sr != null) sr.destroy();
-      sr = SpeechRecognizer.createSpeechRecognizer(getContext());
+      sr = PoftiWake.recognizer(getContext());
       sr.setRecognitionListener(new RecognitionListener() {
         public void onReadyForSpeech(Bundle b) {}
         public void onBeginningOfSpeech() {}

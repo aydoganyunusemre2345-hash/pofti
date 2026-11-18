@@ -4,6 +4,8 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
@@ -23,6 +25,18 @@ public class PoftiWake extends Service {
   private long lastWake = 0;
   private SpeechRecognizer sr;
   private final Handler h = new Handler(Looper.getMainLooper());
+
+  public static SpeechRecognizer recognizer(Context c) {
+    try {
+      String d = android.provider.Settings.Secure.getString(c.getContentResolver(), "voice_recognition_service");
+      if (d != null && d.contains("com.pofti.app")) {
+        ComponentName cn = new ComponentName("com.google.android.googlequicksearchbox", "com.google.android.voicesearch.serviceapi.GoogleRecognitionService");
+        c.getPackageManager().getServiceInfo(cn, 0);
+        return SpeechRecognizer.createSpeechRecognizer(c, cn);
+      }
+    } catch (Exception e) {}
+    return SpeechRecognizer.createSpeechRecognizer(c);
+  }
 
   @Override public IBinder onBind(Intent i) { return null; }
 
@@ -45,7 +59,7 @@ public class PoftiWake extends Service {
     if (!running) return;
     if (sr != null) { sr.destroy(); sr = null; }
     if (MainActivity.front) { h.postDelayed(this::listen, 1500); return; }
-    sr = SpeechRecognizer.createSpeechRecognizer(this);
+    sr = recognizer(this);
     sr.setRecognitionListener(new RecognitionListener() {
       public void onReadyForSpeech(Bundle b) {}
       public void onBeginningOfSpeech() {}
