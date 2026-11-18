@@ -85,7 +85,7 @@ public class PoftiWake extends Service {
       String t = s.toLowerCase(new Locale("tr", "TR"));
       if (t.contains("pofti") || t.contains("bofti") || t.contains("pofi")) {
         lastWake = System.currentTimeMillis(); pending = t;
-        Intent i = new Intent(this, MainActivity.class);
+        Intent i = new Intent(this, OverlayActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         try { startActivity(i); } catch (Exception e) {}
         return;

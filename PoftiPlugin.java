@@ -170,6 +170,8 @@ public class PoftiPlugin extends Plugin {
     JSObject o = new JSObject(); o.put("text", PoftiWake.pending == null ? "" : PoftiWake.pending); PoftiWake.pending = null; c.resolve(o);
   }
 
+  @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
+
   @PluginMethod public void accessOn(PluginCall c) {
     JSObject o = new JSObject(); o.put("on", PoftiService.inst != null); c.resolve(o);
   }

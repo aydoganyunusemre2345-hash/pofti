@@ -23,7 +23,7 @@ public class PoftiAssist extends VoiceInteractionService {
     @Override public void onShow(Bundle args, int flags) {
       super.onShow(args, flags);
       PoftiWake.pending = "hey pofti";
-      Intent i = new Intent(getContext(), MainActivity.class);
+      Intent i = new Intent(getContext(), OverlayActivity.class);
       i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
       startAssistantActivity(i);
       hide();
