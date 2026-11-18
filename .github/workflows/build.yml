@@ -19,6 +19,16 @@ jobs:
       - run: npm install --legacy-peer-deps
       - run: npx cap add android
       - run: sed -i 's#gradle-[0-9.]*-\(all\|bin\).zip#gradle-8.7-all.zip#' android/gradle/wrapper/gradle-wrapper.properties
+      - run: |
+          D=android/app/src/main/java/com/pofti/app
+          mkdir -p $D android/app/src/main/res/xml android/app/src/main/res/values
+          cp PoftiPlugin.java PoftiService.java MainActivity.java $D/
+          cp pofti_accessibility.xml android/app/src/main/res/xml/
+          cp pofti_strings.xml android/app/src/main/res/values/
+      - run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" /><queries><intent><action android:name="android.speech.RecognitionService" /></intent><intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent></queries><application#' $M
+          sed -i 's#</application>#<service android:name=".PoftiService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"><intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter><meta-data android:name="android.accessibilityservice" android:resource="@xml/pofti_accessibility" /></service></application>#' $M
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
