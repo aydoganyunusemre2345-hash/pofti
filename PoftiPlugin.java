@@ -14,6 +14,7 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -31,6 +32,7 @@ public class PoftiPlugin extends Plugin {
   private boolean ttsOk = false, torchOn = false;
   private PluginCall speakCall;
   private SpeechRecognizer sr;
+  private PluginCall listenCall;
 
   @Override public void load() {
     tts = new TextToSpeech(getContext(), st -> {
@@ -76,6 +78,8 @@ public class PoftiPlugin extends Plugin {
 
   private void startListen(PluginCall call) {
     getActivity().runOnUiThread(() -> {
+      cancelListen();
+      listenCall = call;
       if (!SpeechRecognizer.isRecognitionAvailable(getContext())) { call.reject("servis yok"); return; }
       if (sr != null) sr.destroy();
       sr = SpeechRecognizer.createSpeechRecognizer(getContext());
@@ -87,8 +91,10 @@ public class PoftiPlugin extends Plugin {
         public void onEndOfSpeech() {}
         public void onPartialResults(Bundle b) {}
         public void onEvent(int t, Bundle b) {}
-        public void onError(int e) { JSObject o = new JSObject(); o.put("text", ""); o.put("error", e); call.resolve(o); }
+        public void onError(int e) { if (listenCall != call) return; listenCall = null; JSObject o = new JSObject(); o.put("text", ""); o.put("error", e); call.resolve(o); }
         public void onResults(Bundle b) {
+          if (listenCall != call) return;
+          listenCall = null;
           ArrayList<String> l = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
           JSObject o = new JSObject();
           o.put("text", l != null && !l.isEmpty() ? l.get(0) : "");
@@ -111,7 +117,7 @@ public class PoftiPlugin extends Plugin {
   }
 
   @PluginMethod public void openSettings(PluginCall c) {
-    JSObject o = new JSObject(); o.put("ok", start(new Intent(c.getString("action", "android.settings.SETTINGS")))); c.resolve(o);
+    Intent i = new Intent(c.getString("action", "android.settings.SETTINGS")); String d = c.getString("data"); if (d != null) i.setData(Uri.parse(d)); JSObject o = new JSObject(); o.put("ok", start(i)); c.resolve(o);
   }
 
   @PluginMethod public void openApp(PluginCall c) {
@@ -145,6 +151,23 @@ public class PoftiPlugin extends Plugin {
       cm.setTorchMode(cm.getCameraIdList()[0], torchOn);
       c.resolve();
     } catch (Exception e) { c.reject("fener"); }
+  }
+
+  private void cancelListen() {
+    PluginCall c = listenCall; listenCall = null;
+    if (c != null) { try { if (sr != null) sr.cancel(); } catch (Exception e) {} JSObject o = new JSObject(); o.put("text", ""); o.put("cancelled", true); c.resolve(o); }
+  }
+
+  @PluginMethod public void stopListen(PluginCall c) { getActivity().runOnUiThread(() -> { cancelListen(); c.resolve(); }); }
+
+  @PluginMethod public void wakeStart(PluginCall c) {
+    try { ContextCompat.startForegroundService(getContext(), new Intent(getContext(), PoftiWake.class)); c.resolve(); } catch (Exception e) { c.reject("servis"); }
+  }
+
+  @PluginMethod public void wakeStop(PluginCall c) { getContext().stopService(new Intent(getContext(), PoftiWake.class)); c.resolve(); }
+
+  @PluginMethod public void takeWake(PluginCall c) {
+    JSObject o = new JSObject(); o.put("text", PoftiWake.pending == null ? "" : PoftiWake.pending); PoftiWake.pending = null; c.resolve(o);
   }
 
   @PluginMethod public void accessOn(PluginCall c) {

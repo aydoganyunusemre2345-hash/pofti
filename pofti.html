@@ -58,6 +58,7 @@ button:hover{background:#1d4ed8}
     <button onclick="komutIsle()">Gönder</button>
     <button class="mic" id="micBtn" onclick="sesliDinle()">🎤</button>
     <button id="convBtn" onclick="sohbetModu()" title="Sürekli sohbet">🗣️</button>
+    <button id="wakeBtn" onclick="wakeModu()" title="Hey Pofti modu">👂</button>
   </div>
   <div id="response">Selam! Ben Pofti. Bana yaz ya da yüzüme dokunup konuş!</div>
   <div class="sliders">
@@ -84,6 +85,59 @@ const $ = id => document.getElementById(id);
 const NC = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 const P = NC ? Capacitor.Plugins : {};
 const PN = NC && P.PoftiNative ? P.PoftiNative : null;
+let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
+const WAKE = /(?:hey|hay|ey)?\s*(?:pofti|bofti|pofi|pofty|bofi|poftu)/;
+function dinle() { if (kilit) PN.stopListen().catch(() => {}); else dongu(); }
+function dinleSonra() {
+  if (!PN || document.hidden) return;
+  if (surekli || beklenenKomut) mod = "komut"; else if (wakeOn) mod = "wake"; else return;
+  dinle();
+}
+function uyandir(t) {
+  uyu(false); sonEtkilesim = Date.now();
+  const kalan = t.replace(WAKE, "").replace(/^[\s,.!?]+/, "").trim();
+  if (kalan) { beklenenKomut = false; $("userInput").value = kalan; komutIsle(); }
+  else { beklenenKomut = true; konus(rnd(["Efendim?", "Buradayım!", "Dinliyorum!"]), "happy"); }
+}
+async function dongu() {
+  if (!PN || kilit || document.hidden || !(wakeOn || surekli || mod === "komut")) return;
+  kilit = true; const yuz = $("face"), mic = $("micBtn"); let r = null;
+  try {
+    mic.classList.add("listening");
+    if (mod === "komut") { yuz.classList.add("speaking"); $("response").innerText = "Dinliyorum, konuş..."; }
+    r = await PN.listen();
+  } catch (e) {
+    kilit = false; mic.classList.remove("listening"); yuz.classList.remove("speaking");
+    wakeOn = false; surekli = false; $("wakeBtn").style.background = ""; $("convBtn").style.background = "";
+    return konus("Mikrofon izni ya da konuşma servisi sorunu var. Google uygulamasını ve mikrofon iznini kontrol et.");
+  }
+  kilit = false; mic.classList.remove("listening"); yuz.classList.remove("speaking");
+  if (r && r.cancelled) return setTimeout(dongu, 200);
+  const t = ((r && r.text) || "").toLocaleLowerCase("tr-TR");
+  if (mod === "komut") {
+    beklenenKomut = false;
+    if (t) { bos = 0; $("userInput").value = t; return komutIsle(); }
+    if (surekli && ++bos < 3) return dongu();
+    surekli = false; $("convBtn").style.background = ""; mod = "wake";
+    if (wakeOn) return dongu();
+    return konus("Seni duyamadım, tekrar dokunur musun?");
+  }
+  if (t && WAKE.test(t)) return uyandir(t);
+  setTimeout(dongu, 150);
+}
+async function wakeModu() {
+  if (!PN) return konus("Hey Pofti sadece telefon uygulamasında çalışır.");
+  wakeOn = !wakeOn; kayit.yaz("pofti_wake", wakeOn ? "1" : "0"); $("wakeBtn").style.background = wakeOn ? "#8b5cf6" : "";
+  if (wakeOn) { try { await PN.wakeStart(); } catch {} konus("Hey Pofti modu açık! Bana hey Pofti diye seslenebilirsin. Başka uygulamadayken de gelmem için arka plan iznini ayarla de."); }
+  else { try { await PN.wakeStop(); } catch {} PN.stopListen().catch(() => {}); konus("Hey Pofti modunu kapattım."); }
+}
+function wakeBaslat() {
+  if (!PN) return;
+  wakeOn = kayit.oku("pofti_wake", "0") === "1"; $("wakeBtn").style.background = wakeOn ? "#8b5cf6" : "";
+  if (wakeOn) { PN.wakeStart().catch(() => {}); setTimeout(() => { mod = "wake"; dongu(); }, 1500); }
+  setInterval(async () => { if (document.hidden) return; try { const w = (await PN.takeWake()).text; if (w) uyandir(w.toLocaleLowerCase("tr-TR")); } catch {} }, 1200);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) PN.stopListen().catch(() => {}); else if (wakeOn) setTimeout(() => { mod = "wake"; dongu(); }, 500); });
+}
 const bekle = ms => new Promise(r => setTimeout(r, ms));
 let surekli = false, bos = 0;
 const rnd = a => a[Math.floor(Math.random() * a.length)];
@@ -95,7 +149,10 @@ async function cihazKomut(m) {
   const web = "Bunu sadece telefon uygulamasının içinde yapabilirim.", izin = "Bunun için erişilebilirlik izni lazım. Ayarları açtım, listeden Pofti'yi bulup aç, sonra tekrar söyle.";
   let x;
   if (/sohbeti kapat|sohbet modunu kapat|dinlemeyi bırak/.test(m)) { surekli = false; return "Tamam, sohbet modunu kapattım."; }
-  if (/sohbet mod/.test(m)) { sohbetModu(); return null; }
+  if (/sohbet mod/.test(m)) { sohbetModu(); return ""; }
+  if (/hey pofti modu|uyanma modu/.test(m)) { wakeModu(); return ""; }
+  if (/arka plan izni|arka planda dinle|üstte göster/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.action.MANAGE_OVERLAY_PERMISSION", data: "package:com.pofti.app" }); return "Açılan listede Pofti'yi bulup üstte gösterme iznini aç, geri dön ve pil iznini ayarla de."; }
+  if (/pil izni|pil kısıtlama|pil optimizasyon/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", data: "package:com.pofti.app" }); return "Çıkan pencerede izin ver de. Honor'da ayrıca Ayarlar, Pil, Uygulama başlatma bölümünden Pofti'yi elle yönetmeye al ve üç seçeneği de aç."; }
   if (/erişilebilirlik/.test(m)) { if (!PN) return web; erisimAc(); return "Erişilebilirlik ayarlarını açtım. Listeden Pofti'yi bulup aç."; }
   if (/fener/.test(m)) { if (!PN) return web; const k = /kapat|söndür/.test(m); try { await PN.torch({ on: !k }); return k ? "Feneri kapattım." : "Feneri açtım."; } catch { return "Feneri açamadım."; } }
   if (/(tablet|cihaz|medya|müzik) ses/.test(m) && (x = m.match(/\d+/))) { if (!PN) return web; await PN.setVolume({ percent: +x[0] }); return `Tablet sesini yüzde ${x[0]} yaptım.`; }
@@ -109,7 +166,7 @@ async function cihazKomut(m) {
     const ad = x[1]; konus(`${ad} için Play Store'u açıyorum, ekrana dokunma, bekle.`);
     await PN.openUri({ uri: "market://search?q=" + encodeURIComponent(ad) + "&c=apps" }); await bekle(4000);
     await PN.action({ a: "click", text: ad }); await bekle(3500);
-    for (const t of ["Yükle", "Install"]) if ((await PN.action({ a: "click", text: t })).ok) return `${ad} için Yükle düğmesine bastım. İndirme başladıysa bekle.`;
+    for (const t of ["Yükle", "Install", "İndir", "Kur"]) if ((await PN.action({ a: "click", text: t })).ok) return `${ad} için Yükle düğmesine bastım. İndirme başladıysa bekle.`;
     return "Yükle düğmesini bulamadım. Zaten kurulu olabilir ya da Play Store giriş istiyor olabilir.";
   }
   x = m.match(/^(.+?)\s+(?:uygulamasını\s+)?(?:aç|başlat|çalıştır)$/);
@@ -275,7 +332,7 @@ function konus(metin, duygu) {
   if (duygu === "happy") { face.classList.add("happy"); setTimeout(() => face.classList.remove("happy"), 3000); }
   if (PN && ses > 0) {
     face.classList.add("speaking");
-    PN.speak({ text: metin, volume: ses }).then(r => { face.classList.remove("speaking"); if (surekli && !(r && r.interrupted)) setTimeout(sesliDinle, 400); }).catch(() => face.classList.remove("speaking"));
+    PN.speak({ text: metin, volume: ses }).then(r => { face.classList.remove("speaking"); if (!(r && r.interrupted)) setTimeout(dinleSonra, 400); }).catch(() => face.classList.remove("speaking"));
   } else if ('speechSynthesis' in window && ses > 0) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(metin);
@@ -313,7 +370,7 @@ async function komutIsle() {
   inp.value = ""; sonEtkilesim = Date.now(); if (uykuda) uyu(false);
   const m = ham.toLocaleLowerCase("tr-TR");
   let c = "";
-  const dk = await cihazKomut(m); if (dk) { konus(dk); return; }
+  const dk = await cihazKomut(m); if (dk !== null) { if (dk) konus(dk); return; }
 
   if (/uyu|uyku modu/.test(m)) { uyu(true); c = "İyi geceler... Dokunursan uyanırım."; }
   else if (/parlak/.test(m)) {
@@ -399,7 +456,7 @@ async function nativeDinle() {
 }
 function sesliDinle() {
   sonEtkilesim = Date.now(); if (uykuda) { uyu(false); konus("Uyandım!"); return; }
-  if (PN) { pnDinle(); return; }
+  if (PN) { mod = "komut"; dinle(); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return konus("Tarayıcın dinlemeyi desteklemiyor, yazarak anlaşabiliriz!");
   speechSynthesis.cancel();
@@ -412,6 +469,7 @@ function sesliDinle() {
 }
 
 document.querySelectorAll(".chip").forEach(ch => ch.onclick = () => { $("userInput").value = ch.dataset.c; komutIsle(); });
+wakeBaslat();
 </script>
 </body>
 </html>
