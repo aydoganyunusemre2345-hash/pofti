@@ -22,13 +22,13 @@ jobs:
       - run: |
           D=android/app/src/main/java/com/pofti/app
           mkdir -p $D android/app/src/main/res/xml android/app/src/main/res/values
-          cp PoftiPlugin.java PoftiService.java MainActivity.java $D/
+          cp PoftiPlugin.java PoftiService.java PoftiWake.java MainActivity.java $D/
           cp pofti_accessibility.xml android/app/src/main/res/xml/
           cp pofti_strings.xml android/app/src/main/res/values/
       - run: |
           M=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" /><queries><intent><action android:name="android.speech.RecognitionService" /></intent><intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent></queries><application#' $M
-          sed -i 's#</application>#<service android:name=".PoftiService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"><intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter><meta-data android:name="android.accessibilityservice" android:resource="@xml/pofti_accessibility" /></service></application>#' $M
+          sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" /><uses-permission android:name="android.permission.FOREGROUND_SERVICE" /><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" /><uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" /><uses-permission android:name="android.permission.POST_NOTIFICATIONS" /><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" /><queries><intent><action android:name="android.speech.RecognitionService" /></intent><intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent></queries><application#' $M
+          sed -i 's#</application>#<service android:name=".PoftiWake" android:exported="false" android:foregroundServiceType="microphone" /><service android:name=".PoftiService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"><intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter><meta-data android:name="android.accessibilityservice" android:resource="@xml/pofti_accessibility" /></service></application>#' $M
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
