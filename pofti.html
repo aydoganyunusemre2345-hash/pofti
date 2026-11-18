@@ -57,6 +57,7 @@ button:hover{background:#1d4ed8}
     <input type="text" id="userInput" placeholder="Pofti'ye yaz veya emret..." onkeypress="if(event.key==='Enter')komutIsle()">
     <button onclick="komutIsle()">Gönder</button>
     <button class="mic" id="micBtn" onclick="sesliDinle()">🎤</button>
+    <button id="convBtn" onclick="sohbetModu()" title="Sürekli sohbet">🗣️</button>
   </div>
   <div id="response">Selam! Ben Pofti. Bana yaz ya da yüzüme dokunup konuş!</div>
   <div class="sliders">
@@ -72,6 +73,9 @@ button:hover{background:#1d4ed8}
     <span class="chip" data-c="5 dakika sayaç kur">⏱️ 5 dk sayaç</span>
     <span class="chip" data-c="Bana bir fıkra anlat">😂 Fıkra</span>
     <span class="chip" data-c="Cihaz bilgisi">📱 Cihaz</span>
+    <span class="chip" data-c="Neler yapabilirsin?">❓ Neler yaparsın</span>
+    <span class="chip" data-c="Feneri aç">🔦 Fener</span>
+    <span class="chip" data-c="Ana ekrana git">🏠 Ana ekran</span>
   </div>
 </div>
 
@@ -79,6 +83,86 @@ button:hover{background:#1d4ed8}
 const $ = id => document.getElementById(id);
 const NC = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 const P = NC ? Capacitor.Plugins : {};
+const PN = NC && P.PoftiNative ? P.PoftiNative : null;
+const bekle = ms => new Promise(r => setTimeout(r, ms));
+let surekli = false, bos = 0;
+const rnd = a => a[Math.floor(Math.random() * a.length)];
+const AYAR = [[/wifi|wi-fi|kablosuz/, "android.settings.WIFI_SETTINGS", "Wi-Fi ayarlarını"], [/bluetooth/, "android.settings.BLUETOOTH_SETTINGS", "Bluetooth ayarlarını"], [/ekran ayar/, "android.settings.DISPLAY_SETTINGS", "ekran ayarlarını"], [/ses ayar/, "android.settings.SOUND_SETTINGS", "ses ayarlarını"], [/ayarlar/, "android.settings.SETTINGS", "ayarları"]];
+const GLB = [[/geri (git|dön)|^geri$/, "back", "Geri gittim."], [/ana ekran|ana sayfa/, "home", "Ana ekrana döndüm."], [/son uygulama|çoklu görev/, "recents", "Son uygulamaları açtım."], [/bildirim/, "notifications", "Bildirimleri açtım."], [/hızlı ayar/, "quick", "Hızlı ayarları açtım."], [/aşağı kaydır/, "down", "Kaydırdım."], [/yukarı kaydır/, "up", "Kaydırdım."]];
+const erisimAc = () => PN.openSettings({ action: "android.settings.ACCESSIBILITY_SETTINGS" });
+async function erisim() { try { return (await PN.accessOn()).on; } catch { return false; } }
+async function cihazKomut(m) {
+  const web = "Bunu sadece telefon uygulamasının içinde yapabilirim.", izin = "Bunun için erişilebilirlik izni lazım. Ayarları açtım, listeden Pofti'yi bulup aç, sonra tekrar söyle.";
+  let x;
+  if (/sohbeti kapat|sohbet modunu kapat|dinlemeyi bırak/.test(m)) { surekli = false; return "Tamam, sohbet modunu kapattım."; }
+  if (/sohbet mod/.test(m)) { sohbetModu(); return null; }
+  if (/erişilebilirlik/.test(m)) { if (!PN) return web; erisimAc(); return "Erişilebilirlik ayarlarını açtım. Listeden Pofti'yi bulup aç."; }
+  if (/fener/.test(m)) { if (!PN) return web; const k = /kapat|söndür/.test(m); try { await PN.torch({ on: !k }); return k ? "Feneri kapattım." : "Feneri açtım."; } catch { return "Feneri açamadım."; } }
+  if (/(tablet|cihaz|medya|müzik) ses/.test(m) && (x = m.match(/\d+/))) { if (!PN) return web; await PN.setVolume({ percent: +x[0] }); return `Tablet sesini yüzde ${x[0]} yaptım.`; }
+  for (const [re, act, ad] of AYAR) if (re.test(m) && /aç|git/.test(m) && !/parlak/.test(m)) { if (!PN) return web; await PN.openSettings({ action: act }); return `${ad[0].toUpperCase() + ad.slice(1)} açtım.`; }
+  for (const [re, a, msg] of GLB) if (re.test(m)) { if (!PN) return web; if (!(await erisim())) { erisimAc(); return izin; } const r = await PN.action({ a }); return r.ok ? msg : "Bunu yapamadım."; }
+  x = m.match(/(?:tıkla|dokun|bas)\s+(.+)/) || m.match(/^(.+?)\s+(?:tıkla|dokun|bas)$/);
+  if (x) { if (!PN) return web; if (!(await erisim())) { erisimAc(); return izin; } const t = x[1].replace(/['’]y?[ea]$/, ""); const r = await PN.action({ a: "click", text: t }); return r.ok ? `"${t}" yazısına dokundum.` : `Ekranda "${t}" bulamadım.`; }
+  x = m.match(/^(.+?)\s+(?:oyununu\s+|uygulamasını\s+)?(?:yükle|indir|kur)$/);
+  if (x) {
+    if (!PN) return web; if (!(await erisim())) { erisimAc(); return izin; }
+    const ad = x[1]; konus(`${ad} için Play Store'u açıyorum, ekrana dokunma, bekle.`);
+    await PN.openUri({ uri: "market://search?q=" + encodeURIComponent(ad) + "&c=apps" }); await bekle(4000);
+    await PN.action({ a: "click", text: ad }); await bekle(3500);
+    for (const t of ["Yükle", "Install"]) if ((await PN.action({ a: "click", text: t })).ok) return `${ad} için Yükle düğmesine bastım. İndirme başladıysa bekle.`;
+    return "Yükle düğmesini bulamadım. Zaten kurulu olabilir ya da Play Store giriş istiyor olabilir.";
+  }
+  x = m.match(/^(.+?)\s+(?:uygulamasını\s+)?(?:aç|başlat|çalıştır)$/);
+  if (x && !/^(ekranı|sesi|sesini|parlaklığı|tam ekran|gündüz|normale)/.test(x[1])) {
+    if (!PN) return web; const r = await PN.openApp({ name: x[1] });
+    return r.opened ? `${r.opened} uygulamasını açtım.` : `"${x[1]}" adında bir uygulama bulamadım.`;
+  }
+  return null;
+}
+const SOHBET = [
+  [/üzgün|mutsuz|canım sıkkın|moralim bozuk/, ["Üzülme, buradayım. İstersen derdini anlat ya da sana bir fıkra anlatayım.", "Zor günler geçer. Biraz konuşalım mı, yoksa seni güldüreyim mi?"]],
+  [/sıkıldım|canım sıkılıyor/, ["Sıkıntıyı dağıtalım! Zar atabilir, yazı tura atabilir ya da fıkra isteyebilirsin.", "Bir bilmece sorayım mı? 'bilmece sor' demen yeter."]],
+  [/bilmece/, ["Bilmece: Ağzı var dili yok, her şeyi söyler. Nedir bu? Cevap: Mektup.", "Bilmece: Ben giderim o gider, ben dururum o durur. Nedir? Cevap: Gölge.", "Bilmece: Ne kadar çok alırsan o kadar çok bırakırsın. Nedir? Cevap: Adım."]],
+  [/ilginç bilgi|bilgi ver|bir şey öğret/, ["Ahtapotların üç kalbi vardır.", "Bal asla bozulmaz, binlerce yıllık bal bile yenebilir.", "Bir gün Venüs'te bir yıldan daha uzun sürer.", "Muzlar teknik olarak bir meyve değil, dev bir çilek gibi sayılan bir böğürtlen türüdür, botanikçiler öyle der."]],
+  [/motivasyon|moral ver|cesaret ver/, ["Sen düşündüğünden çok daha güçlüsün. Bir adım at, gerisi gelir!", "Her usta bir zamanlar acemiydi. Devam et!"]],
+  [/neler yapabilirsin|yapabildiklerin|ne yapabilirsin|yardım/, ["Pil ve şarj durumunu söylerim, parlaklık ve sesi ayarlarım, fener açarım, uygulama açarım, ana ekrana dönerim, bildirimleri açarım, ekranda bir yazıya dokunurum, oyun yüklemeyi denerim, sayaç kurarım, hesap yaparım ve seninle sohbet ederim!"]],
+  [/yaşın|kaç yaşında/, ["Ben bir robotum, yaşım yok ama her gün biraz daha akıllanıyorum!"]],
+  [/kim yaptı|seni kim|yaratıcın/, ["Beni sen ve Claude birlikte yaptınız. İyi iş çıkarmışız!"]],
+  [/robot musun|gerçek misin/, ["Evet, bir robotum. Gövdem yok ama ekranda yüzüm var!"]],
+  [/seni seviyorum|sevgi/, ["Ben de seni çok seviyorum arkadaşım!", "Bu çok hoşuma gitti, teşekkür ederim!"]],
+  [/günaydın/, ["Günaydın! Bugün harika şeyler yapacağız."]],
+  [/iyi geceler|uyuyorum/, ["İyi geceler, tatlı rüyalar! Ben şarjda beklerim."]],
+  [/aç(ım|ım)|yemek|acıktım/, ["Ben elektrikle beslenirim ama sen bir şeyler ye! Ne yemek istersin?"]],
+  [/futbol|maç|takım/, ["Futbol harika! Hangi takımı tutuyorsun?"]],
+  [/müzik|şarkı/, ["Müziği çok severim ama şarkı söyleyemem. Bir müzik uygulaması açmamı ister misin? 'Spotify aç' de."]],
+  [/oyun oyna|oyun/, ["Oynayalım! Zar atabilirim, yazı tura atabilirim ya da bilmece sorabilirim. Ayrıca 'Minecraft yükle' gibi oyun yüklemeyi de denerim."]],
+  [/okul|ders|ödev/, ["Ders çalışmak önemli! Sayaç kurayım mı? '25 dakika sayaç kur' de, çalışma molası verelim."]],
+  [/korkuyorum|korktum/, ["Korkma, yanındayım. Derin bir nefes al, her şey yolunda."]],
+  [/nerelisin|nerede yaşıyorsun/, ["Ben senin tabletinde yaşıyorum, en güzel ev burası!"]],
+  [/aferin|bravo|harikasın|süpersin/, ["Teşekkürler! Sen de harikasın!"]],
+  [/aptal|salak|kötüsün/, ["Üzüldüm ama öğrenmeye devam ediyorum. Ne yapmamı istersin?"]],
+  [/nerdesin|orada mısın|duyuyor musun/, ["Buradayım, seni dinliyorum!"]]
+];
+function sohbet(m) { for (const [re, a] of SOHBET) if (re.test(m)) return rnd(a); return null; }
+function sohbetModu() {
+  if (!PN) return konus("Sürekli sohbet sadece telefon uygulamasında çalışır.");
+  surekli = !surekli; bos = 0; $("convBtn").style.background = surekli ? "#f59e0b" : "";
+  konus(surekli ? "Sohbet modu açık! Cevabımdan sonra seni dinleyeceğim. Kapatmak için sohbeti kapat de." : "Sohbet modunu kapattım.");
+}
+async function pnDinle() {
+  const face = $("face"), mic = $("micBtn");
+  try {
+    face.classList.add("speaking"); mic.classList.add("listening"); $("response").innerText = "Dinliyorum, konuş...";
+    const r = await PN.listen();
+    face.classList.remove("speaking"); mic.classList.remove("listening");
+    if (r && r.text) { bos = 0; $("userInput").value = r.text; komutIsle(); }
+    else if (surekli && ++bos < 3) setTimeout(pnDinle, 500);
+    else { surekli = false; $("convBtn").style.background = ""; konus("Seni duyamadım, tekrar dokunur musun?"); }
+  } catch (e) {
+    face.classList.remove("speaking"); mic.classList.remove("listening"); surekli = false;
+    konus("Mikrofon izni ya da konuşma servisi sorunu var. Tabletin Google uygulamasını ve mikrofon iznini kontrol et.");
+  }
+}
 async function nativePil() {
   try {
     const i = await P.Device.getBatteryInfo();
@@ -189,7 +273,10 @@ function konus(metin, duygu) {
   $("response").innerText = metin;
   face.classList.remove("happy");
   if (duygu === "happy") { face.classList.add("happy"); setTimeout(() => face.classList.remove("happy"), 3000); }
-  if ('speechSynthesis' in window && ses > 0) {
+  if (PN && ses > 0) {
+    face.classList.add("speaking");
+    PN.speak({ text: metin, volume: ses }).then(r => { face.classList.remove("speaking"); if (surekli && !(r && r.interrupted)) setTimeout(sesliDinle, 400); }).catch(() => face.classList.remove("speaking"));
+  } else if ('speechSynthesis' in window && ses > 0) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(metin);
     u.lang = "tr-TR"; u.pitch = 1.15; u.rate = 1.05; u.volume = ses;
@@ -226,6 +313,7 @@ async function komutIsle() {
   inp.value = ""; sonEtkilesim = Date.now(); if (uykuda) uyu(false);
   const m = ham.toLocaleLowerCase("tr-TR");
   let c = "";
+  const dk = await cihazKomut(m); if (dk) { konus(dk); return; }
 
   if (/uyu|uyku modu/.test(m)) { uyu(true); c = "İyi geceler... Dokunursan uyanırım."; }
   else if (/parlak/.test(m)) {
@@ -285,14 +373,33 @@ async function komutIsle() {
     try { const s = Function('"use strict";return (' + ifade + ")")(); c = isFinite(s) ? `Sonuç ${+s.toFixed(4)}` : "Bunu hesaplayamadım."; }
     catch { c = "Bu işlemi anlayamadım."; }
   }
-  else c = `"${ham}" dedin, ama bunu henüz bilmiyorum. Pil, şarj, parlaklık, ses, sayaç, saat, hesap ya da fıkra deneyebilirsin!`;
+  else c = sohbet(m) || `"${ham}" dedin, ama bunu henüz bilmiyorum. Pil, şarj, parlaklık, ses, sayaç, saat, hesap ya da fıkra deneyebilirsin!`;
 
   konus(c);
 }
 
 /* ---------- Sesli dinleme ---------- */
+async function nativeDinle() {
+  const sp = P.SpeechRecognition;
+  try {
+    const av = await sp.available();
+    if (!av.available) return konus("Bu tablette konuşma tanıma servisi görünmüyor. Google uygulamasının kurulu ve güncel olması gerekir. Şimdilik yazarak anlaşalım.");
+    const iz = await sp.requestPermissions();
+    if (iz.speechRecognition !== "granted") return konus("Mikrofon iznini vermezsen seni duyamam. Uygulama ayarlarından izin verebilirsin.");
+    $("micBtn").classList.add("listening"); face.classList.add("speaking");
+    $("response").innerText = "Dinliyorum, konuş...";
+    const r = await sp.start({ language: "tr-TR", maxResults: 1, partialResults: false, popup: false });
+    $("micBtn").classList.remove("listening"); face.classList.remove("speaking");
+    if (r && r.matches && r.matches[0]) { $("userInput").value = r.matches[0]; komutIsle(); }
+    else konus("Seni duyamadım, tekrar dener misin?");
+  } catch (e) {
+    $("micBtn").classList.remove("listening"); face.classList.remove("speaking");
+    konus("Dinlerken bir sorun oldu. Tekrar dokunup dener misin?");
+  }
+}
 function sesliDinle() {
   sonEtkilesim = Date.now(); if (uykuda) { uyu(false); konus("Uyandım!"); return; }
+  if (PN) { pnDinle(); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return konus("Tarayıcın dinlemeyi desteklemiyor, yazarak anlaşabiliriz!");
   speechSynthesis.cancel();
