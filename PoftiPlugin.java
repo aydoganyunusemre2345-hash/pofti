@@ -9,9 +9,6 @@ import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import androidx.core.content.ContextCompat;
@@ -25,16 +22,20 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import java.util.ArrayList;
 import java.util.Locale;
+import org.vosk.Recognizer;
+import org.vosk.android.RecognitionListener;
+import org.vosk.android.SpeechService;
 
 @CapacitorPlugin(name = "PoftiNative", permissions = { @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "mic") })
 public class PoftiPlugin extends Plugin {
   private TextToSpeech tts;
   private boolean ttsOk = false, torchOn = false;
   private PluginCall speakCall;
-  private SpeechRecognizer sr;
+  private SpeechService ss;
   private PluginCall listenCall;
 
   @Override public void load() {
+    PoftiVosk.get(getContext(), m -> {}, e -> {});
     tts = new TextToSpeech(getContext(), st -> {
       if (st == TextToSpeech.SUCCESS) {
         tts.setLanguage(new Locale("tr", "TR"));
@@ -76,35 +77,34 @@ public class PoftiPlugin extends Plugin {
     if (getPermissionState("mic") == PermissionState.GRANTED) startListen(call); else call.reject("izin");
   }
 
+  private void stopSs() { if (ss != null) { try { ss.stop(); ss.shutdown(); } catch (Exception e) {} ss = null; } }
+
+  private void finishListen(PluginCall call, String text, int err) {
+    if (listenCall != call) return;
+    listenCall = null; stopSs();
+    JSObject o = new JSObject(); o.put("text", text); if (err != 0) o.put("error", err);
+    call.resolve(o);
+  }
+
+  private String voskText(String h) { try { return new org.json.JSONObject(h).optString("text", "").trim(); } catch (Exception e) { return ""; } }
+
   private void startListen(PluginCall call) {
     getActivity().runOnUiThread(() -> {
       cancelListen();
       listenCall = call;
-      if (!SpeechRecognizer.isRecognitionAvailable(getContext())) { call.reject("servis yok"); return; }
-      if (sr != null) sr.destroy();
-      sr = PoftiWake.recognizer(getContext());
-      sr.setRecognitionListener(new RecognitionListener() {
-        public void onReadyForSpeech(Bundle b) {}
-        public void onBeginningOfSpeech() {}
-        public void onRmsChanged(float v) {}
-        public void onBufferReceived(byte[] b) {}
-        public void onEndOfSpeech() {}
-        public void onPartialResults(Bundle b) {}
-        public void onEvent(int t, Bundle b) {}
-        public void onError(int e) { if (listenCall != call) return; listenCall = null; JSObject o = new JSObject(); o.put("text", ""); o.put("error", e); call.resolve(o); }
-        public void onResults(Bundle b) {
-          if (listenCall != call) return;
-          listenCall = null;
-          ArrayList<String> l = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-          JSObject o = new JSObject();
-          o.put("text", l != null && !l.isEmpty() ? l.get(0) : "");
-          call.resolve(o);
-        }
-      });
-      Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-      i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-      i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR");
-      sr.startListening(i);
+      PoftiVosk.get(getContext(), m -> {
+        if (listenCall != call) return;
+        try {
+          ss = new SpeechService(new Recognizer(m, 16000.0f), 16000.0f);
+          ss.startListening(new RecognitionListener() {
+            public void onPartialResult(String h) {}
+            public void onResult(String h) { String t = voskText(h); if (!t.isEmpty()) finishListen(call, t, 0); }
+            public void onFinalResult(String h) { String t = voskText(h); if (!t.isEmpty()) finishListen(call, t, 0); }
+            public void onError(Exception e) { finishListen(call, "", 5); }
+            public void onTimeout() { finishListen(call, "", 6); }
+          }, 9000);
+        } catch (Exception e) { finishListen(call, "", 5); }
+      }, e -> finishListen(call, "", 21));
     });
   }
 
@@ -155,7 +155,7 @@ public class PoftiPlugin extends Plugin {
 
   private void cancelListen() {
     PluginCall c = listenCall; listenCall = null;
-    if (c != null) { try { if (sr != null) sr.cancel(); } catch (Exception e) {} JSObject o = new JSObject(); o.put("text", ""); o.put("cancelled", true); c.resolve(o); }
+    if (c != null) { stopSs(); JSObject o = new JSObject(); o.put("text", ""); o.put("cancelled", true); c.resolve(o); }
   }
 
   @PluginMethod public void stopListen(PluginCall c) { getActivity().runOnUiThread(() -> { cancelListen(); c.resolve(); }); }

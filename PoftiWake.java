@@ -9,33 +9,27 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
-import java.util.ArrayList;
 import java.util.Locale;
+import java.util.regex.Pattern;
+import org.json.JSONObject;
+import org.vosk.Recognizer;
+import org.vosk.android.RecognitionListener;
+import org.vosk.android.SpeechService;
 
 public class PoftiWake extends Service {
   public static volatile String pending = null;
   private static PoftiWake inst;
-
-  public static void release() {
-    final PoftiWake w = inst;
-    if (w == null) return;
-    w.h.post(() -> {
-      if (w.sr != null) { try { w.sr.cancel(); } catch (Exception e) {} w.sr.destroy(); w.sr = null; }
-      w.h.removeCallbacksAndMessages(null);
-      w.h.postDelayed(w::listen, 2000);
-    });
-  }
-  private boolean running = false;
+  private static final Pattern WAKE = Pattern.compile("\\b[pb][oö][fv]\\w*");
+  private boolean running = false, loading = false;
   private long lastWake = 0;
-  private SpeechRecognizer sr;
+  private SpeechService ss;
   private final Handler h = new Handler(Looper.getMainLooper());
+
+  public static void release() { final PoftiWake w = inst; if (w != null) w.h.post(w::stopSs); }
 
   public static SpeechRecognizer recognizer(Context c) {
     try {
@@ -57,51 +51,50 @@ public class PoftiWake extends Service {
     nm.createNotificationChannel(new NotificationChannel("pofti_wake", "Pofti dinliyor", NotificationManager.IMPORTANCE_LOW));
     Notification n = new Notification.Builder(this, "pofti_wake").setContentTitle("Pofti seni dinliyor").setContentText("Hey Pofti de").setSmallIcon(android.R.drawable.ic_btn_speak_now).build();
     if (Build.VERSION.SDK_INT >= 30) startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE); else startForeground(7, n);
-    if (!running) { running = true; h.post(this::listen); }
+    if (!running) { running = true; h.post(this::tick); }
     return START_STICKY;
   }
 
   @Override public void onDestroy() {
-    running = false; inst = null; h.removeCallbacksAndMessages(null);
-    if (sr != null) { sr.destroy(); sr = null; }
+    running = false; inst = null; h.removeCallbacksAndMessages(null); stopSs();
     super.onDestroy();
   }
 
-  private void listen() {
+  private void stopSs() { if (ss != null) { try { ss.stop(); ss.shutdown(); } catch (Exception e) {} ss = null; } }
+
+  private void tick() {
     if (!running) return;
-    if (sr != null) { sr.destroy(); sr = null; }
-    if (MainActivity.front) { h.postDelayed(this::listen, 1500); return; }
-    sr = recognizer(this);
-    sr.setRecognitionListener(new RecognitionListener() {
-      public void onReadyForSpeech(Bundle b) {}
-      public void onBeginningOfSpeech() {}
-      public void onRmsChanged(float v) {}
-      public void onBufferReceived(byte[] b) {}
-      public void onEndOfSpeech() {}
-      public void onEvent(int t, Bundle b) {}
-      public void onError(int e) { h.postDelayed(PoftiWake.this::listen, 700); }
-      public void onPartialResults(Bundle b) { check(b); }
-      public void onResults(Bundle b) { check(b); h.postDelayed(PoftiWake.this::listen, 300); }
-    });
-    Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-    i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-    i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "tr-TR");
-    i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-    sr.startListening(i);
+    if (MainActivity.front) stopSs(); else if (ss == null) startVosk();
+    h.postDelayed(this::tick, 1500);
   }
 
-  private void check(Bundle b) {
-    ArrayList<String> l = b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-    if (l == null || System.currentTimeMillis() - lastWake < 5000) return;
-    for (String s : l) {
-      String t = s.toLowerCase(new Locale("tr", "TR"));
-      if (t.contains("pofti") || t.contains("bofti") || t.contains("pofi")) {
-        lastWake = System.currentTimeMillis(); pending = t;
-        Intent i = new Intent(this, OverlayActivity.class);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-        try { startActivity(i); } catch (Exception e) {}
-        return;
-      }
-    }
+  private void startVosk() {
+    if (loading) return;
+    loading = true;
+    PoftiVosk.get(this, m -> {
+      loading = false;
+      if (!running || ss != null || MainActivity.front) return;
+      try {
+        ss = new SpeechService(new Recognizer(m, 16000.0f), 16000.0f);
+        ss.startListening(new RecognitionListener() {
+          public void onPartialResult(String x) { check(x, "partial"); }
+          public void onResult(String x) { check(x, "text"); }
+          public void onFinalResult(String x) { check(x, "text"); }
+          public void onError(Exception e) { stopSs(); }
+          public void onTimeout() {}
+        });
+      } catch (Exception e) { stopSs(); }
+    }, e -> loading = false);
+  }
+
+  private void check(String x, String key) {
+    String t;
+    try { t = new JSONObject(x).optString(key, "").toLowerCase(new Locale("tr", "TR")); } catch (Exception e) { return; }
+    if (t.isEmpty() || System.currentTimeMillis() - lastWake < 5000 || !WAKE.matcher(t).find()) return;
+    lastWake = System.currentTimeMillis(); pending = t;
+    stopSs();
+    Intent i = new Intent(this, OverlayActivity.class);
+    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+    try { startActivity(i); } catch (Exception e) {}
   }
 }

@@ -142,7 +142,7 @@ function siradaki() {
 const OV = /overlay/.test(location.search);
 let busyN = 0;
 let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
-const WAKE = /(?:hey|hay|ey)?\s*(?:pofti|bofti|pofi|pofty|bofi|poftu)/;
+const WAKE = /(?:\b(?:hey|hay|ey)\s+)?\b[pb][oö][fv]\w*/;
 function dinle() { if (kilit) PN.stopListen().catch(() => {}); else dongu(); }
 function dinleSonra() {
   if (!PN || document.hidden) return;
