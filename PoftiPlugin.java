@@ -64,7 +64,10 @@ public class PoftiPlugin extends Plugin {
     speakCall = call;
     Bundle p = new Bundle();
     p.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, call.getFloat("volume", 1f));
-    tts.setPitch(1.1f);
+    tts.setSpeechRate(call.getFloat("rate", 1f));
+    tts.setPitch(call.getFloat("pitch", 1.1f));
+    String vn = call.getString("voice", "");
+    if (vn != null && !vn.isEmpty()) { try { for (android.speech.tts.Voice x : tts.getVoices()) if (x.getName().equals(vn)) { tts.setVoice(x); break; } } catch (Exception e) {} }
     tts.speak(call.getString("text", ""), TextToSpeech.QUEUE_FLUSH, p, "p" + System.nanoTime());
   }
 
@@ -189,6 +192,12 @@ public class PoftiPlugin extends Plugin {
   }
 
   @PermissionCallback private void micAskCb(PluginCall c) { c.resolve(); }
+
+  @PluginMethod public void voices(PluginCall c) {
+    com.getcapacitor.JSArray a = new com.getcapacitor.JSArray();
+    try { if (ttsOk) for (android.speech.tts.Voice x : tts.getVoices()) if ("tr".equals(x.getLocale().getLanguage())) a.put(x.getName()); } catch (Exception e) {}
+    JSObject o = new JSObject(); o.put("list", a); c.resolve(o);
+  }
 
   @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
 

@@ -14,7 +14,7 @@ body{background:var(--bg);color:#f8fafc;font-family:'Segoe UI',Tahoma,sans-serif
 .badge.warn{color:#fbbf24;border-color:#fbbf24}.badge.bad{color:#f87171;border-color:#f87171}
 .robot-face{width:180px;height:180px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border-radius:45px;display:flex;flex-direction:column;justify-content:center;align-items:center;box-shadow:0 0 50px rgba(59,130,246,.5);margin-bottom:18px;transition:all .3s;cursor:pointer}
 .robot-face.speaking{transform:scale(1.08);box-shadow:0 0 70px rgba(56,189,248,.9);background:linear-gradient(135deg,#2563eb,#38bdf8)}
-.robot-face.sleep{opacity:.5;filter:saturate(.4)}
+.robot-face.sleep{opacity:.5;filter:hue-rotate(var(--hue,0deg)) saturate(.4)}
 .robot-face.happy .eye{height:20px;border-radius:16px 16px 0 0;transform:translateY(10px)}
 .eyes{display:flex;gap:40px;margin-bottom:20px}
 .eye{width:32px;height:48px;background:#fff;border-radius:16px;animation:blink 4s infinite;transition:all .3s}
@@ -49,6 +49,23 @@ body.ov #setBtn{display:none}
 .izin .ik{font-size:22px}.izin .tx{flex:1;text-align:left;font-size:15px}
 .izin small{color:#94a3b8;display:block;font-size:12px;margin-top:2px}
 .izin button{padding:8px 16px;font-size:13px}
+.robot-face{filter:hue-rotate(var(--hue,0deg))}
+.eyes{transition:transform .5s}
+.robot-face.sad .eye{height:38px;transform:translateY(6px)}
+.robot-face.sad .mouth{height:12px;width:36px;border-radius:30px 30px 4px 4px}
+.robot-face.love .eye{background:#fda4af;border-radius:50%;width:38px;height:38px}
+.robot-face.surprised .eye{width:40px;height:56px}
+.robot-face.surprised .mouth{width:22px;height:22px;border-radius:50%}
+body.gz-yuvarlak .eye{width:36px;height:36px;border-radius:50%}
+body.gz-kare .eye{border-radius:8px;width:34px;height:44px}
+#setPanel h3{margin:20px 0 6px;font-size:16px;text-align:left}
+#setPanel select,#setPanel input[type=password]{width:100%;padding:10px;border-radius:10px;border:1px solid #334155;background:#090d16;color:#fff;font-size:15px;margin:4px 0}
+#setPanel label{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#94a3b8;font-size:13px;margin:6px 0}
+#setPanel label input{flex:1}
+.grup{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.mini{padding:8px 12px;font-size:13px;background:#1e293b}
+.mini.sec{background:#2563eb}
+.not{color:#94a3b8;font-size:12px}
 </style>
 </head>
 <body>
@@ -62,6 +79,7 @@ body.ov #setBtn{display:none}
     <div id="izinListe"></div>
     <button onclick="siradaki()" style="width:100%;margin-top:6px">Sıradaki eksik izne git</button>
     <p style="color:#94a3b8;font-size:12px">✅ verildi · ❌ verilmedi. "Ver" düğmesi seni ilgili ayara götürür. İzni verip geri dönünce işaret kendiliğinden güncellenir.</p>
+    <div id="ayarEk"></div>
   </div>
 </div>
 
@@ -132,12 +150,81 @@ async function izinYenile() {
     k.appendChild(r);
   }
 }
-function ayarAc() { $("setPanel").hidden = false; izinYenile(); clearInterval(izinTimer); izinTimer = setInterval(izinYenile, 2000); }
+function ayarAc() { $("setPanel").hidden = false; izinYenile(); ayarDoldur(); clearInterval(izinTimer); izinTimer = setInterval(izinYenile, 2000); }
 function ayarKapat() { $("setPanel").hidden = true; clearInterval(izinTimer); }
 function siradaki() {
   if (!PN) return;
   const e = IZINLER.find(i => !izinDurum[i[0]]);
   if (e) { Promise.resolve(e[3]()).catch(() => {}).then(() => setTimeout(izinYenile, 800)); } else konus("Tüm izinler tamam!");
+}
+const TEMALAR = [["Mavi", 0], ["Mor", 50], ["Pembe", 110], ["Kırmızı", 140], ["Turuncu", 170], ["Yeşil", 270], ["Turkuaz", 310]];
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+function temaUygula(h) { document.documentElement.style.setProperty("--hue", h + "deg"); kayit.yaz("pofti_hue", h); }
+function gozUygula(g) { document.body.classList.remove("gz-yuvarlak", "gz-kare"); if (g) document.body.classList.add(g); kayit.yaz("pofti_goz", g || ""); }
+function duyguBul(t) {
+  t = t.toLocaleLowerCase("tr-TR");
+  if (/seviyorum|canım|sevgi/.test(t)) return "love";
+  if (/maalesef|bulamadım|yapamadım|hata|sorun|üzgün|üzül/.test(t)) return "sad";
+  if (/harika|süper|bravo|tebrik|güzel|sevindim|fıkra|ha ha/.test(t)) return "happy";
+  if (/!$/.test(t.trim()) && t.length < 40) return "surprised";
+  return null;
+}
+function gorunumBaslat() {
+  document.documentElement.style.setProperty("--hue", kayit.oku("pofti_hue", "0") + "deg");
+  const g = kayit.oku("pofti_goz", ""); if (g) document.body.classList.add(g);
+  setInterval(() => { const e = document.querySelector(".eyes"); if (e && !uykuda) e.style.transform = "translateX(" + Math.round(Math.random() * 12 - 6) + "px)"; }, 3500);
+}
+function hafizaOku() {
+  try { const h = JSON.parse(kayit.oku("pofti_hafiza", "{}")); return { isim: h.isim || kayit.oku("pofti_isim", ""), notlar: h.notlar || [] }; } catch { return { isim: "", notlar: [] }; }
+}
+function hafizaYaz(h) { kayit.yaz("pofti_hafiza", JSON.stringify(h)); }
+function hafizaSil(i) { const h = hafizaOku(); h.notlar.splice(i, 1); hafizaYaz(h); hafizaCiz(); }
+function hafizaCiz() {
+  const k = $("hafizaListe"); if (!k) return; const h = hafizaOku();
+  k.innerHTML = (h.isim ? `<div class="izin"><div class="tx">İsmin: ${esc(h.isim)}</div></div>` : "") + h.notlar.map((n, i) => `<div class="izin"><div class="tx">${esc(n)}</div><button onclick="hafizaSil(${i})">✕</button></div>`).join("") || '<p class="not">Henüz bir şey hatırlamıyorum.</p>';
+}
+function sesKaydet() { kayit.yaz("pofti_ses_adi", $("sesSec").value); kayit.yaz("pofti_hiz", $("sesHiz").value); kayit.yaz("pofti_perde", $("sesPerde").value); }
+async function ayarDoldur() {
+  const e = $("ayarEk"), hue = +kayit.oku("pofti_hue", "0"), goz = kayit.oku("pofti_goz", ""), sv = kayit.oku("pofti_ses_adi", "");
+  let sesler = []; if (PN) { try { sesler = (await PN.voices()).list || []; } catch {} }
+  e.innerHTML = `<h3>Görünüm</h3>
+  <div class="grup">${TEMALAR.map(([a, h]) => `<button class="mini ${h === hue ? "sec" : ""}" onclick="temaUygula(${h});ayarDoldur()">${a}</button>`).join("")}</div>
+  <div class="grup">${[["Oval", ""], ["Yuvarlak", "gz-yuvarlak"], ["Kare", "gz-kare"]].map(([a, g]) => `<button class="mini ${g === goz ? "sec" : ""}" onclick="gozUygula('${g}');ayarDoldur()">Göz: ${a}</button>`).join("")}</div>
+  <h3>Pofti'nin sesi</h3>
+  <select id="sesSec" onchange="sesKaydet()"><option value="">Varsayılan Türkçe ses</option>${sesler.map(s => `<option value="${s}" ${s === sv ? "selected" : ""}>${s}</option>`).join("")}</select>
+  <label>Hız <input type="range" id="sesHiz" min="60" max="150" value="${kayit.oku("pofti_hiz", "100")}" oninput="sesKaydet()"></label>
+  <label>Perde <input type="range" id="sesPerde" min="70" max="150" value="${kayit.oku("pofti_perde", "110")}" oninput="sesKaydet()"></label>
+  <button onclick="konus('Merhaba, ben Pofti! Sesim böyle, nasıl buldun?')">▶ Sesi dene</button>
+  <h3>Yapay zeka (isteğe bağlı)</h3>
+  <input type="password" id="yzAnahtar" placeholder="Anthropic API anahtarı (sk-ant-...)" value="${esc(kayit.oku("pofti_key", ""))}">
+  <button onclick="yzKaydet()" style="width:100%;margin-top:6px">Kaydet ve dene</button>
+  <p id="yzDurum" class="not">Anahtar sadece bu tablette durur. Anahtar varsa bilmediği şeyleri yapay zekaya sorar.</p>
+  <h3>Hafıza</h3><div id="hafizaListe"></div>`;
+  hafizaCiz();
+}
+let yzGecmis = [];
+async function yzSor(m) {
+  const key = kayit.oku("pofti_key", "");
+  if (!key || !navigator.onLine) return null;
+  $("response").innerText = "Düşünüyorum...";
+  const hf = hafizaOku();
+  const sys = "Sen Pofti'sin: bir tabletin içinde yaşayan, ekranda yüzü olan, neşeli ve samimi bir Türk robot arkadaşsın. Kısa konuş: en fazla iki üç cümle, düz metin, emoji ve liste kullanma. Cevapların sesli okunacak." + (hf.isim ? " Kullanıcının adı " + hf.isim + "." : "") + (hf.notlar.length ? " Kullanıcı hakkında bildiklerin: " + hf.notlar.join("; ") + "." : "");
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" }, body: JSON.stringify({ model: "claude-haiku-5-5", max_tokens: 300, system: sys, messages: [...yzGecmis, { role: "user", content: m }] }) });
+    if (!r.ok) return null;
+    const d = await r.json(), t = (d.content || []).map(x => x.text || "").join("").trim();
+    if (!t) return null;
+    yzGecmis.push({ role: "user", content: m }, { role: "assistant", content: t }); yzGecmis = yzGecmis.slice(-8);
+    return t;
+  } catch { return null; }
+}
+async function yzKaydet() {
+  const k = $("yzAnahtar").value.trim(); kayit.yaz("pofti_key", k); yzGecmis = [];
+  if (!k) { $("yzDurum").textContent = "Anahtar silindi."; return; }
+  $("yzDurum").textContent = "Deneniyor...";
+  const t = await yzSor("Merhaba! Kendini bir cümleyle tanıt.");
+  $("yzDurum").textContent = t ? "Çalışıyor ✅" : "Bağlanamadı ❌ Anahtarı, interneti ve hesap kredisini kontrol et.";
+  if (t) konus(t);
 }
 const OV = /overlay/.test(location.search);
 let busyN = 0;
@@ -211,6 +298,13 @@ async function cihazKomut(m) {
   let x;
   if (/sohbeti kapat|sohbet modunu kapat|dinlemeyi bırak/.test(m)) { surekli = false; return "Tamam, sohbet modunu kapattım."; }
   if (/sohbet mod/.test(m)) { sohbetModu(); return ""; }
+  if (/neleri hatırlıyorsun|beni tanıyor musun|hakkımda ne biliyorsun/.test(m)) { const h = hafizaOku(); const p = (h.isim ? "Adın " + h.isim + ". " : "") + h.notlar.join(". "); return p ? "Şunları biliyorum. " + p + "." : "Henüz seni tanımıyorum. Bana bir şeyler anlat, hatırla de."; }
+  if (/hafızayı sil|her şeyi unut|beni unut/.test(m)) { hafizaYaz({ notlar: [] }); kayit.yaz("pofti_isim", ""); return "Hepsini unuttum."; }
+  if (/adım ne|ismim ne|adımı biliyor musun/.test(m)) { const h = hafizaOku(); return h.isim ? "Adın " + h.isim + "." : "Adını henüz bilmiyorum. Benim adım şu de."; }
+  x = m.match(/^(?:şunu |bunu )?hatırla\s+(.+)$/) || m.match(/^(.+?)\s+(?:diye |olduğunu )?hatırla$/);
+  if (x && !/^(bunu|şunu)$/.test(x[1])) { const h = hafizaOku(); h.notlar.push(x[1]); h.notlar = h.notlar.slice(-30); hafizaYaz(h); return "Tamam, hatırlayacağım: " + x[1] + "."; }
+  x = m.match(/(mavi|mor|pembe|kırmızı|turuncu|yeşil|turkuaz)/);
+  if (x && /renk|tema|yüz/.test(m)) { const t = TEMALAR.find(a => a[0].toLocaleLowerCase("tr-TR") === x[1]); if (t) { temaUygula(t[1]); return t[0] + " renge geçtim!"; } }
   if (/izinler|izin ekranı|pofti ayarları/.test(m)) { ayarAc(); return "İzinler ekranını açtım."; }
   if (/hey pofti modu|uyanma modu/.test(m)) { wakeModu(); return ""; }
   if (/arka plan izni|arka planda dinle|üstte göster/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.action.MANAGE_OVERLAY_PERMISSION", data: "package:com.pofti.app" }); return "Açılan listede Pofti'yi bulup üstte gösterme iznini aç, geri dön ve pil iznini ayarla de."; }
@@ -390,11 +484,12 @@ setInterval(() => {
 /* ---------- Konuşma ---------- */
 function konus(metin, duygu) {
   $("response").innerText = metin;
-  face.classList.remove("happy");
-  if (duygu === "happy") { face.classList.add("happy"); setTimeout(() => face.classList.remove("happy"), 3000); }
+  ["happy", "sad", "love", "surprised"].forEach(c => face.classList.remove(c));
+  const d = duygu || duyguBul(metin);
+  if (d) { face.classList.add(d); setTimeout(() => face.classList.remove(d), 3500); }
   if (PN && ses > 0) {
     face.classList.add("speaking");
-    PN.speak({ text: metin, volume: ses }).then(r => { face.classList.remove("speaking"); if (!(r && r.interrupted)) setTimeout(dinleSonra, 400); }).catch(() => face.classList.remove("speaking"));
+    PN.speak({ text: metin, volume: ses, rate: +kayit.oku("pofti_hiz", "100") / 100, pitch: +kayit.oku("pofti_perde", "110") / 100, voice: kayit.oku("pofti_ses_adi", "") }).then(r => { face.classList.remove("speaking"); if (!(r && r.interrupted)) setTimeout(dinleSonra, 400); }).catch(() => face.classList.remove("speaking"));
   } else if ('speechSynthesis' in window && ses > 0) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(metin);
@@ -492,7 +587,7 @@ async function komutIsle() {
     try { const s = Function('"use strict";return (' + ifade + ")")(); c = isFinite(s) ? `Sonuç ${+s.toFixed(4)}` : "Bunu hesaplayamadım."; }
     catch { c = "Bu işlemi anlayamadım."; }
   }
-  else c = sohbet(m) || `"${ham}" dedin, ama bunu henüz bilmiyorum. Pil, şarj, parlaklık, ses, sayaç, saat, hesap ya da fıkra deneyebilirsin!`;
+  else c = (await yzSor(ham)) || sohbet(m) || `"${ham}" dedin, ama bunu henüz bilmiyorum. Pil, şarj, parlaklık, ses, sayaç, saat, hesap ya da fıkra deneyebilirsin!`;
 
   konus(c);
 }
@@ -532,6 +627,7 @@ function sesliDinle() {
 
 document.querySelectorAll(".chip").forEach(ch => ch.onclick = () => { $("userInput").value = ch.dataset.c; komutIsle(); });
 if (OV) document.body.classList.add("ov");
+gorunumBaslat();
 wakeBaslat();
 </script>
 </body>
