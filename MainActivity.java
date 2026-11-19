@@ -9,6 +9,6 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(PoftiPlugin.class);
     super.onCreate(b);
   }
-  @Override public void onResume() { super.onResume(); front = true; }
+  @Override public void onResume() { super.onResume(); front = true; PoftiWake.release(); }
   @Override public void onPause() { super.onPause(); front = false; }
 }

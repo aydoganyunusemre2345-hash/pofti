@@ -11,6 +11,6 @@ public class OverlayActivity extends BridgeActivity {
     getBridge().getWebView().setBackgroundColor(Color.TRANSPARENT);
     getBridge().getWebView().loadUrl("https://localhost/?overlay=1");
   }
-  @Override public void onResume() { super.onResume(); MainActivity.front = true; }
+  @Override public void onResume() { super.onResume(); MainActivity.front = true; PoftiWake.release(); }
   @Override public void onPause() { super.onPause(); MainActivity.front = false; }
 }

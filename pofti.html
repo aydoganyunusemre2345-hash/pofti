@@ -140,6 +140,7 @@ function siradaki() {
   if (e) { Promise.resolve(e[3]()).catch(() => {}).then(() => setTimeout(izinYenile, 800)); } else konus("Tüm izinler tamam!");
 }
 const OV = /overlay/.test(location.search);
+let busyN = 0;
 let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
 const WAKE = /(?:hey|hay|ey)?\s*(?:pofti|bofti|pofi|pofty|bofi|poftu)/;
 function dinle() { if (kilit) PN.stopListen().catch(() => {}); else dongu(); }
@@ -171,7 +172,8 @@ async function dongu() {
   const t = ((r && r.text) || "").toLocaleLowerCase("tr-TR");
   if (mod === "komut") {
     beklenenKomut = false;
-    if (t) { bos = 0; $("userInput").value = t; return komutIsle(); }
+    if (t) { bos = 0; busyN = 0; $("userInput").value = t; return komutIsle(); }
+    if (r && r.error === 8 && busyN++ < 4) return setTimeout(dongu, 800);
     if (r && r.error && r.error !== 6 && r.error !== 7) { surekli = false; return konus("Dinleme hatası oldu, hata kodu " + r.error + ". Bu kodu Claude'a söyle."); }
     if (surekli && ++bos < 3) return dongu();
     if (OV) return PN.closeOverlay();

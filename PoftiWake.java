@@ -21,6 +21,17 @@ import java.util.Locale;
 
 public class PoftiWake extends Service {
   public static volatile String pending = null;
+  private static PoftiWake inst;
+
+  public static void release() {
+    final PoftiWake w = inst;
+    if (w == null) return;
+    w.h.post(() -> {
+      if (w.sr != null) { try { w.sr.cancel(); } catch (Exception e) {} w.sr.destroy(); w.sr = null; }
+      w.h.removeCallbacksAndMessages(null);
+      w.h.postDelayed(w::listen, 2000);
+    });
+  }
   private boolean running = false;
   private long lastWake = 0;
   private SpeechRecognizer sr;
@@ -41,6 +52,7 @@ public class PoftiWake extends Service {
   @Override public IBinder onBind(Intent i) { return null; }
 
   @Override public int onStartCommand(Intent i, int f, int id) {
+    inst = this;
     NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
     nm.createNotificationChannel(new NotificationChannel("pofti_wake", "Pofti dinliyor", NotificationManager.IMPORTANCE_LOW));
     Notification n = new Notification.Builder(this, "pofti_wake").setContentTitle("Pofti seni dinliyor").setContentText("Hey Pofti de").setSmallIcon(android.R.drawable.ic_btn_speak_now).build();
@@ -50,7 +62,7 @@ public class PoftiWake extends Service {
   }
 
   @Override public void onDestroy() {
-    running = false; h.removeCallbacksAndMessages(null);
+    running = false; inst = null; h.removeCallbacksAndMessages(null);
     if (sr != null) { sr.destroy(); sr = null; }
     super.onDestroy();
   }
