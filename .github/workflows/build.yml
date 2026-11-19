@@ -20,9 +20,17 @@ jobs:
       - run: npx cap add android
       - run: sed -i 's#gradle-[0-9.]*-\(all\|bin\).zip#gradle-8.7-all.zip#' android/gradle/wrapper/gradle-wrapper.properties
       - run: |
+          A=android/app/src/main/assets
+          mkdir -p $A/model-tr
+          wget -q https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip
+          unzip -q vosk-model-small-tr-0.3.zip
+          cp -r vosk-model-small-tr-0.3/* $A/model-tr/
+          cat /proc/sys/kernel/random/uuid > $A/model-tr/uuid
+          printf '\ndependencies {\n    implementation "net.java.dev.jna:jna:5.13.0@aar"\n    implementation "com.alphacephei:vosk-android:0.3.47"\n}\n' >> android/app/build.gradle
+      - run: |
           D=android/app/src/main/java/com/pofti/app
           mkdir -p $D android/app/src/main/res/xml android/app/src/main/res/values
-          cp PoftiPlugin.java PoftiService.java PoftiWake.java PoftiAssist.java OverlayActivity.java MainActivity.java $D/
+          cp PoftiPlugin.java PoftiService.java PoftiWake.java PoftiAssist.java PoftiVosk.java OverlayActivity.java MainActivity.java $D/
           cp pofti_accessibility.xml pofti_voice.xml pofti_recog.xml android/app/src/main/res/xml/
           cp pofti_strings.xml android/app/src/main/res/values/
       - run: |
