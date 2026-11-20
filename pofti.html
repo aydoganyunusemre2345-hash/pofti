@@ -134,6 +134,8 @@ const IZINLER = [
   ["overlay", "Diğer uygulamaların üzerinde göster", "Hey Pofti deyince öne gelmem için", () => PN.openSettings({ action: "android.settings.action.MANAGE_OVERLAY_PERMISSION", data: "package:com.pofti.app" })],
   ["battery", "Pil kısıtlaması yok", "Arka planda kapanmamam için", () => PN.openSettings({ action: "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", data: "package:com.pofti.app" })],
   ["notif", "Bildirimler", "Arka planda dinlerken bildirim gösterebilmem için", () => PN.openSettings({ action: "android.settings.APPLICATION_DETAILS_SETTINGS", data: "package:com.pofti.app" })],
+  ["contacts", "Rehber", "Kişileri bulup aramam ve mesaj yazmam için", () => PN.contactsAsk()],
+  ["notiflisten", "Bildirim erişimi", "Gelen mesajları sesli okumam için (isteğe bağlı)", () => PN.openSettings({ action: "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS" })],
   ["assist", "Varsayılan asistan", "Asistan hareketiyle gelmem için", () => PN.openSettings({ action: "android.settings.VOICE_INPUT_SETTINGS" })]
 ];
 let izinDurum = {}, izinTimer = null;
@@ -170,6 +172,7 @@ function duyguBul(t) {
   return null;
 }
 function gorunumBaslat() {
+  if (PN) PN.setPref({ key: "notif", value: kayit.oku("pofti_notif", "0") === "1" }).catch(() => {});
   document.documentElement.style.setProperty("--hue", kayit.oku("pofti_hue", "0") + "deg");
   const g = kayit.oku("pofti_goz", ""); if (g) document.body.classList.add(g);
   setInterval(() => { const e = document.querySelector(".eyes"); if (e && !uykuda) e.style.transform = "translateX(" + Math.round(Math.random() * 12 - 6) + "px)"; }, 3500);
@@ -199,6 +202,9 @@ async function ayarDoldur() {
   <input type="password" id="yzAnahtar" placeholder="Anthropic API anahtarı (sk-ant-...)" value="${esc(kayit.oku("pofti_key", ""))}">
   <button onclick="yzKaydet()" style="width:100%;margin-top:6px">Kaydet ve dene</button>
   <p id="yzDurum" class="not">Anahtar sadece bu tablette durur. Anahtar varsa bilmediği şeyleri yapay zekaya sorar.</p>
+  <h3>Bildirimler</h3>
+  <label><span>Gelen mesajları sesli oku (WhatsApp, SMS, Telegram)</span><input type="checkbox" style="flex:0" ${kayit.oku("pofti_notif", "0") === "1" ? "checked" : ""} onchange="notifToggle(this.checked)"></label>
+  <p class="not">Bunun için yukarıdaki izinlerde Bildirim erişimi ✅ olmalı.</p>
   <h3>Hey Pofti testi</h3>
   <button onclick="wakeTest()" style="width:100%">🎤 Test et (Hey Pofti de)</button>
   <p id="wakeSonuc" class="not">Pofti'nin seni nasıl duyduğunu burada görürsün.</p>
@@ -265,6 +271,46 @@ async function duyduklarim() {
   let d = {}, h = {}; try { d = await PN.permStatus(); h = await PN.heard(); } catch {}
   o.innerHTML = "Arka plan servisi: " + (d.wakesvc ? "çalışıyor ✅" : "kapalı ❌ (ana ekranda 👂 düğmesine dokun)") + "<br><br>" + (h.text ? h.text.split("\n").map(esc).join("<br>") : "Henüz bir şey duymadım. 👂 açıkken Pofti'den çıkıp ana ekranda 'Hey Pofti' de, sonra buraya bak.");
 }
+const BIR = { "sıfır": 0, bir: 1, iki: 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, yedi: 7, sekiz: 8, dokuz: 9 };
+const ON = { on: 10, yirmi: 20, otuz: 30, "kırk": 40, elli: 50, "altmış": 60, yetmiş: 70, seksen: 80, doksan: 90 };
+function sayilar(m) {
+  const out = []; let cur = null; const push = () => { if (cur !== null) { out.push(cur); cur = null; } };
+  for (const x of m.toLocaleLowerCase("tr-TR").split(/[\s:.,]+/)) {
+    if (/^\d+$/.test(x)) { push(); out.push(+x); }
+    else if (x in BIR) cur = (cur ?? 0) + BIR[x];
+    else if (x in ON) { if (cur !== null && cur % 10 !== 0) push(); cur = (cur ?? 0) + ON[x]; }
+    else if (x === "yüz") cur = (cur || 1) * 100;
+    else push();
+  }
+  push(); return out;
+}
+const WMO = { 0: "açık", 1: "çoğunlukla açık", 2: "parçalı bulutlu", 3: "kapalı", 45: "sisli", 48: "sisli", 51: "hafif çiseleme", 53: "çiseleme", 55: "yoğun çiseleme", 61: "hafif yağmurlu", 63: "yağmurlu", 65: "şiddetli yağmurlu", 71: "hafif karlı", 73: "karlı", 75: "yoğun karlı", 80: "sağanak yağmurlu", 81: "sağanak yağmurlu", 82: "şiddetli sağanak", 95: "gök gürültülü fırtınalı", 96: "dolu yağışlı", 99: "dolu yağışlı" };
+async function sehirBul(ad) {
+  const r = await fetch("https://geocoding-api.open-meteo.com/v1/search?count=1&language=tr&name=" + encodeURIComponent(ad));
+  const d = await r.json(), x = d.results && d.results[0];
+  return x ? { ad: x.name, lat: x.latitude, lon: x.longitude } : null;
+}
+async function havaOzet(sehirAdi, yarin) {
+  let s; try { s = JSON.parse(kayit.oku("pofti_sehir", "null")); } catch { s = null; }
+  if (!navigator.onLine) return "İnternet yok, havayı öğrenemem.";
+  if (sehirAdi) { try { const b = await sehirBul(sehirAdi); if (!b) return `"${sehirAdi}" diye bir şehir bulamadım.`; s = b; } catch { return "Hava servisine ulaşamadım."; } }
+  if (!s) return "Hangi şehirdesin? Şehrim ve şehrin adını söyle, örneğin şehrim İstanbul.";
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=2`);
+    const d = await r.json(), c = d.current, g = d.daily, i = yarin ? 1 : 0;
+    let t = yarin ? `${s.ad} için yarın hava ${WMO[g.weather_code[1]] || ""}, en düşük ${Math.round(g.temperature_2m_min[1])}, en yüksek ${Math.round(g.temperature_2m_max[1])} derece.` : `${s.ad} için şu an hava ${Math.round(c.temperature_2m)} derece ve ${WMO[c.weather_code] || ""}. Bugün en düşük ${Math.round(g.temperature_2m_min[0])}, en yüksek ${Math.round(g.temperature_2m_max[0])} derece.`;
+    const y = g.precipitation_probability_max[i]; if (y >= 30) t += ` Yağış ihtimali yüzde ${y}, şemsiye al.`;
+    return t;
+  } catch { return "Hava bilgisini alamadım."; }
+}
+async function kisiBul(w) {
+  for (const k of [w, w.slice(0, -1), w.slice(0, -2), w.slice(0, -3)]) {
+    if (k.length < 3) continue;
+    try { const r = await PN.contact({ name: k }); if (r.number) return r; } catch { return null; }
+  }
+  return null;
+}
+function notifToggle(b) { kayit.yaz("pofti_notif", b ? "1" : "0"); if (PN) PN.setPref({ key: "notif", value: b }).catch(() => {}); }
 const OV = /overlay/.test(location.search);
 let busyN = 0;
 let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
@@ -329,7 +375,7 @@ const bekle = ms => new Promise(r => setTimeout(r, ms));
 let surekli = false, bos = 0;
 const rnd = a => a[Math.floor(Math.random() * a.length)];
 const AYAR = [[/wifi|wi-fi|kablosuz/, "android.settings.WIFI_SETTINGS", "Wi-Fi ayarlarını"], [/bluetooth/, "android.settings.BLUETOOTH_SETTINGS", "Bluetooth ayarlarını"], [/ekran ayar/, "android.settings.DISPLAY_SETTINGS", "ekran ayarlarını"], [/ses ayar/, "android.settings.SOUND_SETTINGS", "ses ayarlarını"], [/ayarlar/, "android.settings.SETTINGS", "ayarları"]];
-const GLB = [[/geri (git|dön)|^geri$/, "back", "Geri gittim."], [/ana ekran|ana sayfa/, "home", "Ana ekrana döndüm."], [/son uygulama|çoklu görev/, "recents", "Son uygulamaları açtım."], [/bildirim/, "notifications", "Bildirimleri açtım."], [/hızlı ayar/, "quick", "Hızlı ayarları açtım."], [/aşağı kaydır/, "down", "Kaydırdım."], [/yukarı kaydır/, "up", "Kaydırdım."]];
+const GLB = [[/geri (git|dön)|^geri$/, "back", "Geri gittim."], [/ana ekran|ana sayfa/, "home", "Ana ekrana döndüm."], [/son uygulama|çoklu görev/, "recents", "Son uygulamaları açtım."], [/bildirim/, "notifications", "Bildirimleri açtım."], [/hızlı ayar/, "quick", "Hızlı ayarları açtım."], [/aşağı kaydır/, "down", "Kaydırdım."], [/yukarı kaydır/, "up", "Kaydırdım."], [/ekranı kilitle|tableti kilitle/, "lock", "Ekranı kilitledim."], [/ekran görüntüsü/, "screenshot", "Ekran görüntüsünü aldım."]];
 const erisimAc = () => PN.openSettings({ action: "android.settings.ACCESSIBILITY_SETTINGS" });
 async function erisim() { try { return (await PN.accessOn()).on; } catch { return false; } }
 async function cihazKomut(m) {
@@ -344,13 +390,52 @@ async function cihazKomut(m) {
   if (x && !/^(bunu|şunu)$/.test(x[1])) { const h = hafizaOku(); h.notlar.push(x[1]); h.notlar = h.notlar.slice(-30); hafizaYaz(h); return "Tamam, hatırlayacağım: " + x[1] + "."; }
   x = m.match(/(mavi|mor|pembe|kırmızı|turuncu|yeşil|turkuaz)/);
   if (x && /renk|tema|yüz/.test(m)) { const t = TEMALAR.find(a => a[0].toLocaleLowerCase("tr-TR") === x[1]); if (t) { temaUygula(t[1]); return t[0] + " renge geçtim!"; } }
+  if (PN && /(saat|dakika|dk|saniye)\s+sonra|sayaç|zamanlayıcı/.test(m)) {
+    const s = sayilar(m); if (!s.length && !/yarım/.test(m)) return "Kaç dakika olsun? Örneğin beş dakika sonra çamaşırı hatırlat de.";
+    const u = (m.match(/(saat|dakika|dk|saniye)/) || [])[1] || "dakika"; let n = s.length ? s[0] : 0.5; if (/buçuk/.test(m)) n += 0.5;
+    const sn = Math.round(n * (u === "saat" ? 3600 : u === "saniye" ? 1 : 60));
+    const et = m.split(/\s+/).filter(w => !(w in BIR) && !(w in ON) && !/^\d+$/.test(w) && !/^(saat|dakika|dk|saniye|sonra|hatırlat|hatırlatıcı|sayaç|zamanlayıcı|kur|bana|beni|için|yüz|buçuk|yarım)$/.test(w)).join(" ");
+    const r = await PN.timer({ seconds: sn, label: et || "Pofti" });
+    return r.ok ? `${n} ${u === "dk" ? "dakika" : u} sonrası için ${et ? et + " " : ""}zamanlayıcı kurdum.` : "Saat uygulamasını açamadım.";
+  }
+  if (PN && /alarm|uyandır/.test(m) && /kur|ayarla|uyandır|çal/.test(m)) {
+    const s = sayilar(m); if (!s.length) return "Saat kaçta olsun? Örneğin sabah yedi buçukta alarm kur de.";
+    let h = s[0], mi = /buçuk/.test(m) ? 30 : (s[1] ?? 0); if (/akşam|öğleden sonra|gece/.test(m) && h < 12) h += 12;
+    if (h > 23 || mi > 59) return "Bu saati anlayamadım, tekrar söyler misin?";
+    const r = await PN.alarm({ hour: h, minute: mi, label: "Pofti" });
+    return r.ok ? `Alarmı ${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")} için kurdum.` : "Saat uygulamasını açamadım.";
+  }
+  for (const [re, a, msg] of [[/müzi\w*\s+(durdur|duraklat|kapat)|şarkıyı durdur/, "pause", "Durdurdum."], [/müzi\w*\s+(başlat|devam|oynat|çal)|şarkıyı (başlat|devam)/, "play", "Başlattım."], [/sonraki şarkı|bir sonraki|şarkıyı geç|şarkıyı atla|sonraki parça/, "next", "Sonraki şarkıya geçtim."], [/önceki şarkı|bir önceki|önceki parça/, "prev", "Önceki şarkıya döndüm."]]) if (re.test(m)) { if (!PN) return web; await PN.media({ a }); return msg; }
+  x = m.match(/müzi\w*\s+sesini\s+(kıs|azalt|aç|artır|yükselt)/);
+  if (x) { if (!PN) return web; await PN.volumeStep({ up: /aç|artır|yükselt/.test(x[1]) }); return "Tamam."; }
+  x = m.match(/şehrim\s+(.+)$/);
+  if (x) { try { const b = await sehirBul(x[1]); if (!b) return `"${x[1]}" şehrini bulamadım.`; kayit.yaz("pofti_sehir", JSON.stringify(b)); return `Tamam, şehrin ${b.ad}.`; } catch { return "Şehri kaydedemedim, internet var mı?"; } }
+  if (/günaydın|sabah özeti|günün özeti/.test(m)) {
+    const d = new Date(), h = hafizaOku();
+    let t = `Günaydın${h.isim ? " " + h.isim : ""}! Bugün ${d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", weekday: "long" })}, saat ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}. ` + await havaOzet("", false);
+    if (batarya) t += ` Pil yüzde ${Math.round(batarya.level * 100)}.`;
+    return t;
+  }
+  if (/hava durumu|hava nasıl|hava kaç derece|kaç derece|yağmur yağacak mı|yarın hava|bugün hava|şemsiye/.test(m)) {
+    const c = (m.match(/^(.+?)\s+(?:için\s+)?(?:hava|yarın)/) || [])[1];
+    return await havaOzet(c && !/^(bugün|yarın|bugünkü|yarınki|bu|şu an|şimdi)$/.test(c) ? c : "", /yarın/.test(m));
+  }
+  x = m.match(/^(\S+)\s+(?:ara|arar mısın)$/) || m.match(/^ara\s+(\S+)$/);
+  if (x) { if (!PN) return web; const k = await kisiBul(x[1]); if (!k) return `Rehberde "${x[1]}" diye birini bulamadım.`; await PN.openUri({ uri: "tel:" + k.number }); return `${k.name} için numarayı çevirici ekrana getirdim, arama tuşuna dokunman yeter.`; }
+  x = m.match(/^(\S+?)(?:'?y?[ea])?\s+(mesaj|sms|vatsap\S*|whatsapp\S*)\s+(?:yaz|gönder)\s+(.+)$/);
+  if (x) {
+    if (!PN) return web; const k = await kisiBul(x[1]); if (!k) return `Rehberde "${x[1]}" diye birini bulamadım.`;
+    const num = k.number.replace(/[^\d+]/g, ""), wa = /vatsap|whatsapp/.test(x[2]);
+    await PN.openUri({ uri: wa ? "https://wa.me/" + num.replace(/^\+/, "").replace(/^0/, "90") + "?text=" + encodeURIComponent(x[3]) : "sms:" + num + "?body=" + encodeURIComponent(x[3]) });
+    return `${k.name} için mesajı yazdım, göndermek için gönder tuşuna dokun.`;
+  }
   if (/izinler|izin ekranı|pofti ayarları/.test(m)) { ayarAc(); return "İzinler ekranını açtım."; }
   if (/hey pofti modu|uyanma modu/.test(m)) { wakeModu(); return ""; }
   if (/arka plan izni|arka planda dinle|üstte göster/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.action.MANAGE_OVERLAY_PERMISSION", data: "package:com.pofti.app" }); return "Açılan listede Pofti'yi bulup üstte gösterme iznini aç, geri dön ve pil iznini ayarla de."; }
   if (/pil izni|pil kısıtlama|pil optimizasyon/.test(m)) { if (!PN) return web; PN.openSettings({ action: "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", data: "package:com.pofti.app" }); return "Çıkan pencerede izin ver de. Honor'da ayrıca Ayarlar, Pil, Uygulama başlatma bölümünden Pofti'yi elle yönetmeye al ve üç seçeneği de aç."; }
   if (/erişilebilirlik/.test(m)) { if (!PN) return web; erisimAc(); return "Erişilebilirlik ayarlarını açtım. Listeden Pofti'yi bulup aç."; }
   if (/fener/.test(m)) { if (!PN) return web; const k = /kapat|söndür/.test(m); try { await PN.torch({ on: !k }); return k ? "Feneri kapattım." : "Feneri açtım."; } catch { return "Feneri açamadım."; } }
-  if (/(tablet|cihaz|medya|müzik) ses/.test(m) && (x = m.match(/\d+/))) { if (!PN) return web; await PN.setVolume({ percent: +x[0] }); return `Tablet sesini yüzde ${x[0]} yaptım.`; }
+  if (/(tablet|cihaz|medya|müzik) ses/.test(m) && (x = sayilar(m)).length) { if (!PN) return web; await PN.setVolume({ percent: x[0] }); return `Tablet sesini yüzde ${x[0]} yaptım.`; }
   for (const [re, act, ad] of AYAR) if (re.test(m) && /aç|git/.test(m) && !/parlak/.test(m)) { if (!PN) return web; await PN.openSettings({ action: act }); return `${ad[0].toUpperCase() + ad.slice(1)} açtım.`; }
   for (const [re, a, msg] of GLB) if (re.test(m)) { if (!PN) return web; if (!(await erisim())) { erisimAc(); return izin; } const r = await PN.action({ a }); return r.ok ? msg : "Bunu yapamadım."; }
   x = m.match(/(?:tıkla|dokun|bas)\s+(.+)/) || m.match(/^(.+?)\s+(?:tıkla|dokun|bas)$/);
@@ -550,7 +635,7 @@ function sayacKur(sn) {
 }
 
 /* ---------- Yardımcılar ---------- */
-const sayiBul = m => { const r = m.match(/\d+/); return r ? +r[0] : null; };
+const sayiBul = m => { const s = sayilar(m); return s.length ? s[0] : null; };
 const FIKRALAR = [
   "Temel bilgisayarını çöpe atmış. Neden diye sormuşlar: 'Çöp kutusunu boşalttım ama dosyalarım hâlâ duruyor' demiş!",
   "İki elektrik kablosu flört ediyormuş. Biri demiş ki: 'Seni görünce akımım hızlanıyor!'",

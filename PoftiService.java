@@ -25,6 +25,8 @@ public class PoftiService extends AccessibilityService {
       case "quick": return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
       case "up": return swipe(0.5f, 0.3f, 0.5f, 0.7f);
       case "down": return swipe(0.5f, 0.7f, 0.5f, 0.3f);
+      case "lock": return performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+      case "screenshot": return performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT);
       case "click": return clickText(t);
     }
     return false;

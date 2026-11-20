@@ -26,7 +26,7 @@ import org.vosk.Recognizer;
 import org.vosk.android.RecognitionListener;
 import org.vosk.android.SpeechService;
 
-@CapacitorPlugin(name = "PoftiNative", permissions = { @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "mic") })
+@CapacitorPlugin(name = "PoftiNative", permissions = { @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "mic"), @Permission(strings = { Manifest.permission.READ_CONTACTS }, alias = "contacts") })
 public class PoftiPlugin extends Plugin {
   private TextToSpeech tts;
   private boolean ttsOk = false, torchOn = false;
@@ -184,6 +184,8 @@ public class PoftiPlugin extends Plugin {
     try { a = android.provider.Settings.Secure.getString(x.getContentResolver(), "assistant"); } catch (Exception e) {}
     o.put("assist", a != null && a.contains(p));
     o.put("wakesvc", PoftiWake.on);
+    o.put("contacts", ContextCompat.checkSelfPermission(x, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED);
+    o.put("notiflisten", androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(x).contains(p));
     c.resolve(o);
   }
 
@@ -202,6 +204,61 @@ public class PoftiPlugin extends Plugin {
 
   @PluginMethod public void heard(PluginCall c) {
     JSObject o = new JSObject(); o.put("text", getContext().getSharedPreferences("pofti_log", Context.MODE_PRIVATE).getString("h", "")); c.resolve(o);
+  }
+
+  @PluginMethod public void timer(PluginCall c) {
+    Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_TIMER).putExtra(android.provider.AlarmClock.EXTRA_LENGTH, c.getInt("seconds", 60)).putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, c.getString("label", "Pofti")).putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
+    JSObject o = new JSObject(); o.put("ok", start(i)); c.resolve(o);
+  }
+
+  @PluginMethod public void alarm(PluginCall c) {
+    Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM).putExtra(android.provider.AlarmClock.EXTRA_HOUR, c.getInt("hour", 7)).putExtra(android.provider.AlarmClock.EXTRA_MINUTES, c.getInt("minute", 0)).putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, c.getString("label", "Pofti")).putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
+    JSObject o = new JSObject(); o.put("ok", start(i)); c.resolve(o);
+  }
+
+  @PluginMethod public void media(PluginCall c) {
+    String a = c.getString("a", "");
+    int k = a.equals("next") ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT : a.equals("prev") ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS : a.equals("pause") ? android.view.KeyEvent.KEYCODE_MEDIA_PAUSE : a.equals("play") ? android.view.KeyEvent.KEYCODE_MEDIA_PLAY : android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE;
+    AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+    am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, k));
+    am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, k));
+    c.resolve();
+  }
+
+  @PluginMethod public void volumeStep(PluginCall c) {
+    AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+    am.adjustStreamVolume(AudioManager.STREAM_MUSIC, c.getBoolean("up", true) ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+    c.resolve();
+  }
+
+  @PluginMethod public void setPref(PluginCall c) {
+    getContext().getSharedPreferences("pofti_prefs", Context.MODE_PRIVATE).edit().putBoolean(c.getString("key", "x"), c.getBoolean("value", false)).apply();
+    c.resolve();
+  }
+
+  @PluginMethod public void contactsAsk(PluginCall c) {
+    if (getPermissionState("contacts") == PermissionState.GRANTED) { c.resolve(); return; }
+    requestPermissionForAlias("contacts", c, "contactsAskCb");
+  }
+
+  @PermissionCallback private void contactsAskCb(PluginCall c) { c.resolve(); }
+
+  @PluginMethod public void contact(PluginCall c) {
+    if (getPermissionState("contacts") != PermissionState.GRANTED) { requestPermissionForAlias("contacts", c, "contactFlow"); return; }
+    findContact(c);
+  }
+
+  @PermissionCallback private void contactFlow(PluginCall c) {
+    if (getPermissionState("contacts") == PermissionState.GRANTED) findContact(c); else c.reject("izin");
+  }
+
+  private void findContact(PluginCall c) {
+    JSObject o = new JSObject(); o.put("number", "");
+    android.net.Uri u = android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
+    try (android.database.Cursor cur = getContext().getContentResolver().query(u, new String[] { android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER }, android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?", new String[] { "%" + c.getString("name", "") + "%" }, null)) {
+      if (cur != null && cur.moveToFirst()) { o.put("name", cur.getString(0)); o.put("number", cur.getString(1)); }
+    } catch (Exception e) {}
+    c.resolve(o);
   }
 
   @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
