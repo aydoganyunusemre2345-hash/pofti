@@ -52,7 +52,9 @@ public class PoftiWake extends Service {
     return d[a.length()][b.length()];
   }
 
-  public static boolean isWake(String t) {
+  public static boolean isWake(String t) { return isWake(t, true); }
+
+  public static boolean isWake(String t, boolean fin) {
     for (String w : t.trim().split("\\s+")) {
       String n = norm(w);
       if (n.length() >= 3 && (n.startsWith("pof") || lev(n, "pofti") <= 1)) return true;
@@ -62,6 +64,10 @@ public class PoftiWake extends Service {
       for (int len = 4; len <= 6; len++)
         for (int i = 0; i + len <= j.length(); i++)
           if (lev(j.substring(i, i + len), "pofti") <= 1) return true;
+    String[] w = t.trim().split("\\s+");
+    if (fin && w.length == 1 && lev(norm(w[0]), "hey") <= 1) return true;
+    for (int i = 0; i + 1 < w.length; i++)
+      if (lev(norm(w[i]), "hey") <= 1) { String n = norm(w[i + 1]); if (n.length() >= 3 && lev(n, "pofti") <= 3) return true; }
     return false;
   }
 
@@ -138,7 +144,7 @@ public class PoftiWake extends Service {
     try { t = new JSONObject(x).optString(key, "").toLowerCase(new Locale("tr", "TR")); } catch (Exception e) { return; }
     if (t.isEmpty()) return;
     if (key.equals("text")) logHeard(t);
-    if (System.currentTimeMillis() - lastWake < 5000 || !isWake(t)) return;
+    if (System.currentTimeMillis() - lastWake < 5000 || !isWake(t, key.equals("text"))) return;
     lastWake = System.currentTimeMillis(); pending = t;
     stopSs();
     Intent i = new Intent(this, OverlayActivity.class);

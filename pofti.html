@@ -243,6 +243,9 @@ function wakeIdx(t) {
   for (let i = 0; i < w.length; i++) { const n = norm(w[i]); if (n.length >= 3 && (n.startsWith("pof") || lev(n, "pofti") <= 1)) return i + 1; }
   const j = norm(t);
   if (j.length <= 12) for (let L = 4; L <= 6; L++) for (let i = 0; i + L <= j.length; i++) if (lev(j.substr(i, L), "pofti") <= 1) return w.length;
+  const hy = x => lev(norm(x), "hey") <= 1;
+  if (w.length === 1 && hy(w[0])) return 1;
+  for (let i = 0; i + 1 < w.length; i++) if (hy(w[i])) { const n = norm(w[i + 1]); if (n.length >= 3 && lev(n, "pofti") <= 3) return i + 2; }
   return -1;
 }
 let testte = false;
