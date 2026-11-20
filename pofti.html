@@ -199,6 +199,11 @@ async function ayarDoldur() {
   <input type="password" id="yzAnahtar" placeholder="Anthropic API anahtarı (sk-ant-...)" value="${esc(kayit.oku("pofti_key", ""))}">
   <button onclick="yzKaydet()" style="width:100%;margin-top:6px">Kaydet ve dene</button>
   <p id="yzDurum" class="not">Anahtar sadece bu tablette durur. Anahtar varsa bilmediği şeyleri yapay zekaya sorar.</p>
+  <h3>Hey Pofti testi</h3>
+  <button onclick="wakeTest()" style="width:100%">🎤 Test et (Hey Pofti de)</button>
+  <p id="wakeSonuc" class="not">Pofti'nin seni nasıl duyduğunu burada görürsün.</p>
+  <button onclick="duyduklarim()" style="width:100%;margin-top:6px">📋 Arka planda duyduklarım</button>
+  <div id="duyduk" class="not"></div>
   <h3>Hafıza</h3><div id="hafizaListe"></div>`;
   hafizaCiz();
 }
@@ -226,6 +231,37 @@ async function yzKaydet() {
   $("yzDurum").textContent = t ? "Çalışıyor ✅" : "Bağlanamadı ❌ Anahtarı, interneti ve hesap kredisini kontrol et.";
   if (t) konus(t);
 }
+function norm(s) { return [...s.toLocaleLowerCase("tr-TR")].filter(c => /\p{L}/u.test(c)).map(c => ({ b: "p", v: "f", ö: "o", u: "o", ü: "o", d: "t", ı: "i", ş: "s", ğ: "" }[c] ?? c)).join(""); }
+function lev(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function wakeIdx(t) {
+  const w = t.trim().split(/\s+/);
+  for (let i = 0; i < w.length; i++) { const n = norm(w[i]); if (n.length >= 3 && (n.startsWith("pof") || lev(n, "pofti") <= 1)) return i + 1; }
+  const j = norm(t);
+  if (j.length <= 12) for (let L = 4; L <= 6; L++) for (let i = 0; i + L <= j.length; i++) if (lev(j.substr(i, L), "pofti") <= 1) return w.length;
+  return -1;
+}
+let testte = false;
+async function wakeTest() {
+  const s = $("wakeSonuc");
+  if (!PN) { s.textContent = "Sadece uygulamada çalışır."; return; }
+  testte = true; s.textContent = "Dinliyorum, Hey Pofti de...";
+  try {
+    const r = await PN.listen(), t = (r.text || "").toLocaleLowerCase("tr-TR");
+    s.textContent = t ? `Duyduğum: "${t}" → ${wakeIdx(t) >= 0 ? "✅ uyandırır" : "❌ uyandırmaz"}` : "Hiçbir şey duymadım (hata " + (r.error || "-") + ")";
+  } catch { s.textContent = "Dinleyemedim, mikrofon iznini kontrol et."; }
+  testte = false; dinleSonra();
+}
+async function duyduklarim() {
+  const o = $("duyduk");
+  if (!PN) { o.textContent = "Sadece telefon uygulamasında çalışır."; return; }
+  let d = {}, h = {}; try { d = await PN.permStatus(); h = await PN.heard(); } catch {}
+  o.innerHTML = "Arka plan servisi: " + (d.wakesvc ? "çalışıyor ✅" : "kapalı ❌ (ana ekranda 👂 düğmesine dokun)") + "<br><br>" + (h.text ? h.text.split("\n").map(esc).join("<br>") : "Henüz bir şey duymadım. 👂 açıkken Pofti'den çıkıp ana ekranda 'Hey Pofti' de, sonra buraya bak.");
+}
 const OV = /overlay/.test(location.search);
 let busyN = 0;
 let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
@@ -238,12 +274,12 @@ function dinleSonra() {
 }
 function uyandir(t) {
   uyu(false); sonEtkilesim = Date.now();
-  const kalan = t.replace(WAKE, "").replace(/^[\s,.!?]+/, "").trim();
+  const wi = wakeIdx(t), kalan = wi >= 0 ? t.trim().split(/\s+/).slice(wi).join(" ") : "";
   if (kalan) { beklenenKomut = false; $("userInput").value = kalan; komutIsle(); }
   else { beklenenKomut = true; konus(rnd(["Efendim?", "Buradayım!", "Dinliyorum!"]), "happy"); }
 }
 async function dongu() {
-  if (!PN || kilit || document.hidden || !(wakeOn || surekli || mod === "komut")) return;
+  if (!PN || kilit || testte || document.hidden || !(wakeOn || surekli || mod === "komut")) return;
   kilit = true; const yuz = $("face"), mic = $("micBtn"); let r = null;
   try {
     mic.classList.add("listening");
@@ -268,7 +304,7 @@ async function dongu() {
     if (wakeOn) return dongu();
     return konus("Seni duyamadım, tekrar dokunur musun?");
   }
-  if (t && WAKE.test(t)) return uyandir(t);
+  if (t && wakeIdx(t) >= 0) return uyandir(t);
   setTimeout(dongu, 150);
 }
 async function wakeModu() {

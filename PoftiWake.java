@@ -7,6 +7,7 @@ import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
@@ -22,12 +23,47 @@ import org.vosk.android.SpeechService;
 
 public class PoftiWake extends Service {
   public static volatile String pending = null;
+  public static volatile boolean on = false;
   private static PoftiWake inst;
   private static final Pattern WAKE = Pattern.compile("\\b[pb][oö][fv]\\w*");
   private boolean running = false, loading = false;
   private long lastWake = 0;
   private SpeechService ss;
   private final Handler h = new Handler(Looper.getMainLooper());
+
+  private static String norm(String s) {
+    StringBuilder b = new StringBuilder();
+    for (char c : s.toLowerCase(new Locale("tr", "TR")).toCharArray()) {
+      if (!Character.isLetter(c)) continue;
+      if (c == 'ğ') continue;
+      if (c == 'b') c = 'p'; else if (c == 'v') c = 'f'; else if (c == 'ö' || c == 'u' || c == 'ü') c = 'o'; else if (c == 'd') c = 't'; else if (c == 'ı') c = 'i'; else if (c == 'ş') c = 's';
+      b.append(c);
+    }
+    return b.toString();
+  }
+
+  private static int lev(String a, String b) {
+    int[][] d = new int[a.length() + 1][b.length() + 1];
+    for (int i = 0; i <= a.length(); i++) d[i][0] = i;
+    for (int j = 0; j <= b.length(); j++) d[0][j] = j;
+    for (int i = 1; i <= a.length(); i++)
+      for (int j = 1; j <= b.length(); j++)
+        d[i][j] = Math.min(Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1), d[i - 1][j - 1] + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1));
+    return d[a.length()][b.length()];
+  }
+
+  public static boolean isWake(String t) {
+    for (String w : t.trim().split("\\s+")) {
+      String n = norm(w);
+      if (n.length() >= 3 && (n.startsWith("pof") || lev(n, "pofti") <= 1)) return true;
+    }
+    String j = norm(t);
+    if (j.length() <= 12)
+      for (int len = 4; len <= 6; len++)
+        for (int i = 0; i + len <= j.length(); i++)
+          if (lev(j.substring(i, i + len), "pofti") <= 1) return true;
+    return false;
+  }
 
   public static void release() { final PoftiWake w = inst; if (w != null) w.h.post(w::stopSs); }
 
@@ -46,7 +82,7 @@ public class PoftiWake extends Service {
   @Override public IBinder onBind(Intent i) { return null; }
 
   @Override public int onStartCommand(Intent i, int f, int id) {
-    inst = this;
+    inst = this; on = true;
     NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
     nm.createNotificationChannel(new NotificationChannel("pofti_wake", "Pofti dinliyor", NotificationManager.IMPORTANCE_LOW));
     Notification n = new Notification.Builder(this, "pofti_wake").setContentTitle("Pofti seni dinliyor").setContentText("Hey Pofti de").setSmallIcon(android.R.drawable.ic_btn_speak_now).build();
@@ -56,7 +92,7 @@ public class PoftiWake extends Service {
   }
 
   @Override public void onDestroy() {
-    running = false; inst = null; h.removeCallbacksAndMessages(null); stopSs();
+    running = false; on = false; inst = null; h.removeCallbacksAndMessages(null); stopSs();
     super.onDestroy();
   }
 
@@ -87,10 +123,22 @@ public class PoftiWake extends Service {
     }, e -> loading = false);
   }
 
+  private void logHeard(String t) {
+    SharedPreferences p = getSharedPreferences("pofti_log", MODE_PRIVATE);
+    String old = p.getString("h", "");
+    String[] l = old.isEmpty() ? new String[0] : old.split("\n");
+    StringBuilder sb = new StringBuilder();
+    for (int i = Math.max(0, l.length - 7); i < l.length; i++) sb.append(l[i]).append("\n");
+    sb.append(new java.text.SimpleDateFormat("HH:mm:ss", Locale.US).format(new java.util.Date())).append("  ").append(t);
+    p.edit().putString("h", sb.toString()).apply();
+  }
+
   private void check(String x, String key) {
     String t;
     try { t = new JSONObject(x).optString(key, "").toLowerCase(new Locale("tr", "TR")); } catch (Exception e) { return; }
-    if (t.isEmpty() || System.currentTimeMillis() - lastWake < 5000 || !WAKE.matcher(t).find()) return;
+    if (t.isEmpty()) return;
+    if (key.equals("text")) logHeard(t);
+    if (System.currentTimeMillis() - lastWake < 5000 || !isWake(t)) return;
     lastWake = System.currentTimeMillis(); pending = t;
     stopSs();
     Intent i = new Intent(this, OverlayActivity.class);

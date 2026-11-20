@@ -183,6 +183,7 @@ public class PoftiPlugin extends Plugin {
     String a = null;
     try { a = android.provider.Settings.Secure.getString(x.getContentResolver(), "assistant"); } catch (Exception e) {}
     o.put("assist", a != null && a.contains(p));
+    o.put("wakesvc", PoftiWake.on);
     c.resolve(o);
   }
 
@@ -197,6 +198,10 @@ public class PoftiPlugin extends Plugin {
     com.getcapacitor.JSArray a = new com.getcapacitor.JSArray();
     try { if (ttsOk) for (android.speech.tts.Voice x : tts.getVoices()) if ("tr".equals(x.getLocale().getLanguage())) a.put(x.getName()); } catch (Exception e) {}
     JSObject o = new JSObject(); o.put("list", a); c.resolve(o);
+  }
+
+  @PluginMethod public void heard(PluginCall c) {
+    JSObject o = new JSObject(); o.put("text", getContext().getSharedPreferences("pofti_log", Context.MODE_PRIVATE).getString("h", "")); c.resolve(o);
   }
 
   @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
