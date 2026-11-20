@@ -202,6 +202,9 @@ async function ayarDoldur() {
   <input type="password" id="yzAnahtar" placeholder="Anthropic API anahtarı (sk-ant-...)" value="${esc(kayit.oku("pofti_key", ""))}">
   <button onclick="yzKaydet()" style="width:100%;margin-top:6px">Kaydet ve dene</button>
   <p id="yzDurum" class="not">Anahtar sadece bu tablette durur. Anahtar varsa bilmediği şeyleri yapay zekaya sorar.</p>
+  <h3>Widget</h3>
+  <button onclick="widgetEkle()" style="width:100%">📱 Widget ekle (ana ekrana)</button>
+  <p id="widgetDurum" class="not">Ana ekranda Pofti'nin yüzü hareket eder, uyurken üstünde zzz çıkar.</p>
   <h3>Bildirimler</h3>
   <label><span>Gelen mesajları sesli oku (WhatsApp, SMS, Telegram)</span><input type="checkbox" style="flex:0" ${kayit.oku("pofti_notif", "0") === "1" ? "checked" : ""} onchange="notifToggle(this.checked)"></label>
   <p class="not">Bunun için yukarıdaki izinlerde Bildirim erişimi ✅ olmalı.</p>
@@ -311,6 +314,12 @@ async function kisiBul(w) {
   return null;
 }
 function notifToggle(b) { kayit.yaz("pofti_notif", b ? "1" : "0"); if (PN) PN.setPref({ key: "notif", value: b }).catch(() => {}); }
+async function widgetEkle() {
+  const o = $("widgetDurum");
+  if (!PN) { o.textContent = "Sadece telefon uygulamasında çalışır."; return; }
+  let r = {}; try { r = await PN.widgetAdd(); } catch {}
+  o.textContent = r.ok ? "Ana ekrana eklemek için açılan pencereyi onayla." : "Bu tablet doğrudan eklemeyi desteklemiyor. Ana ekrana uzun bas, Widget'lar bölümünden Pofti'yi seçip ana ekrana sürükle.";
+}
 const OV = /overlay/.test(location.search);
 let busyN = 0;
 let mod = "wake", kilit = false, beklenenKomut = false, wakeOn = false;
@@ -624,6 +633,7 @@ function konus(metin, duygu) {
   }
 }
 function uyu(durum) {
+  if (PN) PN.setPref({ key: "sleep", value: !!durum }).catch(() => {});
   uykuda = durum; face.classList.toggle("sleep", durum);
 }
 

@@ -233,6 +233,7 @@ public class PoftiPlugin extends Plugin {
 
   @PluginMethod public void setPref(PluginCall c) {
     getContext().getSharedPreferences("pofti_prefs", Context.MODE_PRIVATE).edit().putBoolean(c.getString("key", "x"), c.getBoolean("value", false)).apply();
+    if ("sleep".equals(c.getString("key", ""))) PoftiWidget.refresh(getContext());
     c.resolve();
   }
 
@@ -259,6 +260,15 @@ public class PoftiPlugin extends Plugin {
       if (cur != null && cur.moveToFirst()) { o.put("name", cur.getString(0)); o.put("number", cur.getString(1)); }
     } catch (Exception e) {}
     c.resolve(o);
+  }
+
+  @PluginMethod public void widgetAdd(PluginCall c) {
+    boolean ok = false;
+    try {
+      android.appwidget.AppWidgetManager m = android.appwidget.AppWidgetManager.getInstance(getContext());
+      if (android.os.Build.VERSION.SDK_INT >= 26 && m.isRequestPinAppWidgetSupported()) ok = m.requestPinAppWidget(new android.content.ComponentName(getContext(), PoftiWidget.class), null, null);
+    } catch (Exception e) {}
+    JSObject o = new JSObject(); o.put("ok", ok); c.resolve(o);
   }
 
   @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
