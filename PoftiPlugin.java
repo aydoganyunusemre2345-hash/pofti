@@ -17,6 +17,7 @@ import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
@@ -33,6 +34,7 @@ public class PoftiPlugin extends Plugin {
   private PluginCall speakCall;
   private SpeechService ss;
   private PluginCall listenCall;
+  private String pendingData = "";
 
   @Override public void load() {
     PoftiVosk.get(getContext(), m -> {}, e -> {});
@@ -269,6 +271,39 @@ public class PoftiPlugin extends Plugin {
       if (android.os.Build.VERSION.SDK_INT >= 26 && m.isRequestPinAppWidgetSupported()) ok = m.requestPinAppWidget(new android.content.ComponentName(getContext(), PoftiWidget.class), null, null);
     } catch (Exception e) {}
     JSObject o = new JSObject(); o.put("ok", ok); c.resolve(o);
+  }
+
+  @PluginMethod public void backupSave(PluginCall c) {
+    pendingData = c.getString("data", "");
+    Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, "pofti-yedek.json");
+    startActivityForResult(c, i, "backupSaveCb");
+  }
+
+  @ActivityCallback private void backupSaveCb(PluginCall c, androidx.activity.result.ActivityResult r) {
+    JSObject o = new JSObject(); o.put("ok", false);
+    if (r.getResultCode() == android.app.Activity.RESULT_OK && r.getData() != null && r.getData().getData() != null) {
+      try (java.io.OutputStream os = getContext().getContentResolver().openOutputStream(r.getData().getData())) {
+        os.write(pendingData.getBytes("UTF-8")); o.put("ok", true);
+      } catch (Exception e) {}
+    }
+    c.resolve(o);
+  }
+
+  @PluginMethod public void backupLoad(PluginCall c) {
+    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+    startActivityForResult(c, i, "backupLoadCb");
+  }
+
+  @ActivityCallback private void backupLoadCb(PluginCall c, androidx.activity.result.ActivityResult r) {
+    JSObject o = new JSObject(); o.put("text", "");
+    if (r.getResultCode() == android.app.Activity.RESULT_OK && r.getData() != null && r.getData().getData() != null) {
+      try (java.io.InputStream is = getContext().getContentResolver().openInputStream(r.getData().getData())) {
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream(); byte[] b = new byte[4096]; int n;
+        while ((n = is.read(b)) > 0) bo.write(b, 0, n);
+        o.put("text", bo.toString("UTF-8"));
+      } catch (Exception e) {}
+    }
+    c.resolve(o);
   }
 
   @PluginMethod public void closeOverlay(PluginCall c) { getActivity().runOnUiThread(() -> getActivity().finish()); c.resolve(); }
