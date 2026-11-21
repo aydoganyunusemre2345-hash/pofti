@@ -49,7 +49,18 @@ jobs:
           sed -i 's#</application>#<receiver android:name=".PoftiWidget" android:exported="true"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/pofti_widget_info" /></receiver><activity android:name=".OverlayActivity" android:theme="@style/PoftiOverlay" android:exported="true" android:launchMode="singleTask" android:excludeFromRecents="true" android:taskAffinity="" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode" /><service android:name=".PoftiWake" android:exported="false" android:foregroundServiceType="microphone" /><service android:name=".PoftiNotif" android:exported="true" android:label="Pofti" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"><intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter></service><service android:name=".PoftiService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"><intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter><meta-data android:name="android.accessibilityservice" android:resource="@xml/pofti_accessibility" /></service><service android:name=".PoftiAssist" android:label="Pofti" android:exported="true" android:permission="android.permission.BIND_VOICE_INTERACTION"><meta-data android:name="android.voice_interaction" android:resource="@xml/pofti_voice" /><intent-filter><action android:name="android.service.voice.VoiceInteractionService" /></intent-filter></service><service android:name=".PoftiAssist$SessSvc" android:exported="true" android:permission="android.permission.BIND_VOICE_INTERACTION" /><service android:name=".PoftiAssist$Recog" android:label="Pofti" android:exported="true"><intent-filter><action android:name="android.speech.RecognitionService" /><category android:name="android.intent.category.DEFAULT" /></intent-filter><meta-data android:name="android.speech" android:resource="@xml/pofti_recog" /></service></application>#' $M
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk pofti.apk
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > pofti.p12
+            AP=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+            $AP sign --ks pofti.p12 --ks-pass env:KS_PASS --out pofti-signed.apk pofti.apk
+            mv pofti-signed.apk pofti.apk
+          fi
+        env:
+          KS_B64: ${{ secrets.KS_B64 }}
+          KS_PASS: ${{ secrets.KS_PASS }}
       - uses: actions/upload-artifact@v4
         with:
           name: Pofti-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: pofti.apk
